@@ -1,166 +1,105 @@
 """
-Resume Parser using Google Gemini API.
-
-This module parses resumes using Gemini's structured output capabilities.
+Resume parsing — OpenAI only (same as JD upload).
 """
 import json
-from typing import Dict, Any
-import google.generativeai as genai
-from config import GEMINI_API_KEY, CHAT_MODEL
+import os
+from pathlib import Path
+from typing import Any, Dict
 
-# Configure Gemini API
-genai.configure(api_key=GEMINI_API_KEY)
+from dotenv import load_dotenv
 
-# Define the schema for resume parsing
-RESUME_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "candidate_name": {
-            "type": "string",
-            "description": "Full name of the candidate"
-        },
-        "email": {
-            "type": "string",
-            "description": "Email address"
-        },
-        "phone": {
-            "type": "string",
-            "description": "Phone number"
-        },
-        "current_title": {
-            "type": "string",
-            "description": "Current or most recent job title"
-        },
-        "location": {
-            "type": "string",
-            "description": "Current location (city, state, country)"
-        },
-        "total_experience_years": {
-            "type": "number",
-            "description": "Total years of professional experience"
-        },
-        "skills": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "List of technical skills"
-        },
-        "education": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "degree": {"type": "string"},
-                    "institution": {"type": "string"},
-                    "year": {"type": "string"}
-                }
-            },
-            "description": "Educational background"
-        },
-        "work_experience": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "title": {"type": "string"},
-                    "company": {"type": "string"},
-                    "duration": {"type": "string"},
-                    "responsibilities": {
-                        "type": "array",
-                        "items": {"type": "string"}
-                    }
-                }
-            },
-            "description": "Work experience history"
-        },
-        "certifications": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Professional certifications"
-        },
-        "summary": {
-            "type": "string",
-            "description": "Professional summary or objective"
-        }
-    },
-    "required": ["candidate_name"]
-}
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+SERVICE_VERSION = "resume-openai-v1"
 
-
-def parse_resume_text(resume_text: str) -> Dict[str, Any]:
-    """
-    Parse a resume using Gemini's structured output.
-    
-    Args:
-        resume_text: Raw resume text
-        
-    Returns:
-        Dictionary containing structured resume information
-    """
-    if not resume_text or not resume_text.strip():
-        raise ValueError("Resume text cannot be empty")
-    
-    try:
-        # Create the model
-        model = genai.GenerativeModel(CHAT_MODEL)
-        
-        # Create the prompt
-        prompt = f"""You are an expert at parsing resumes. Extract structured information from the following resume.
+RESUME_PARSE_PROMPT = """You are an expert at parsing resumes. Extract structured information from the resume below.
 
 Resume:
 {resume_text}
 
-Extract the following information:
-- candidate_name: Full name of the candidate
-- email: Email address
-- phone: Phone number
-- current_title: Current or most recent job title
-- location: Current location
-- total_experience_years: Total years of professional experience (as a number)
-- skills: List of technical skills
-- education: Educational background (degree, institution, year)
-- work_experience: Work history (title, company, duration, responsibilities)
-- certifications: Professional certifications
-- summary: Professional summary or objective
+Return a JSON object with these fields (omit or null if missing):
+- candidate_name (required)
+- email, phone, current_title, location
+- total_experience_years (number)
+- skills (array of strings)
+- education (array of {{degree, institution, year}})
+- work_experience (array of {{title, company, duration, responsibilities}})
+- certifications (array of strings)
+- summary (string)
 
-Return the information as a JSON object matching this structure:
-{json.dumps(RESUME_SCHEMA, indent=2)}
+JSON only."""
 
-If any field is not mentioned in the resume, omit it or use null/empty array as appropriate."""
 
-        # Generate content
-        response = model.generate_content(prompt)
-        
-        # Extract the response text
-        response_text = response.text.strip()
-        
-        # Try to parse JSON from the response
-        # Gemini might wrap it in markdown code blocks
-        if response_text.startswith("```json"):
-            response_text = response_text[7:]  # Remove ```json
-        if response_text.startswith("```"):
-            response_text = response_text[3:]  # Remove ```
-        if response_text.endswith("```"):
-            response_text = response_text[:-3]  # Remove trailing ```
-        
-        response_text = response_text.strip()
-        
-        # Parse the JSON
-        parsed_resume = json.loads(response_text)
-        
-        # Ensure required fields exist
-        if "candidate_name" not in parsed_resume or not parsed_resume["candidate_name"]:
-            parsed_resume["candidate_name"] = "Unknown Candidate"
-            
-        return parsed_resume
-        
+def _reload_env() -> None:
+    load_dotenv(_ENV_PATH, override=True)
+
+
+def use_openai_for_resumes() -> bool:
+    """Always True when this module is used — kept for resume_memory compatibility."""
+    return True
+
+
+def _api_key() -> str:
+    _reload_env()
+    key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    if not key:
+        raise RuntimeError(
+            "OPENAI_API_KEY missing in hiring/.env — add key and restart RUN_HIRING_SERVER.bat"
+        )
+    return key
+
+
+def _chat_model() -> str:
+    _reload_env()
+    return os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+
+
+def _clean_json(text: str) -> str:
+    text = (text or "").strip()
+    if text.startswith("```json"):
+        text = text[7:]
+    if text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+def parse_resume_text(resume_text: str) -> Dict[str, Any]:
+    if not resume_text or not resume_text.strip():
+        raise ValueError("Resume text cannot be empty")
+
+    from openai import OpenAI
+
+    try:
+        client = OpenAI(api_key=_api_key())
+        response = client.chat.completions.create(
+            model=_chat_model(),
+            messages=[
+                {
+                    "role": "user",
+                    "content": RESUME_PARSE_PROMPT.format(resume_text=resume_text),
+                }
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.0,
+        )
+        parsed = json.loads(_clean_json(response.choices[0].message.content or "{}"))
+        if not parsed.get("candidate_name"):
+            parsed["candidate_name"] = "Unknown Candidate"
+        parsed["ai_provider"] = "openai"
+        parsed["service_version"] = SERVICE_VERSION
+        return parsed
     except json.JSONDecodeError as e:
-        # If JSON parsing fails, return a minimal structure
-        print(f"JSON parsing error: {e}")
-        print(f"Response text: {response_text}")
         return {
             "candidate_name": "Unknown Candidate",
-            "error": f"Failed to parse resume: {str(e)}"
+            "error": f"Failed to parse resume JSON: {e}",
+            "ai_provider": "openai",
         }
     except Exception as e:
-        print(f"Error parsing resume: {e}")
-        raise RuntimeError(f"Failed to parse resume: {str(e)}")
+        err = str(e)
+        if "generativelanguage" in err or "gemini" in err.lower():
+            raise RuntimeError(
+                "Old Gemini resume code is still running. Restart RUN_HIRING_SERVER.bat "
+                f"(expect server_build hiring-openai-v8). {err[:200]}"
+            ) from e
+        raise RuntimeError(f"Failed to parse resume: {err}") from e

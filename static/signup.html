@@ -4,311 +4,131 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sign Up - Hiring Portal</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .login-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            overflow: hidden;
-            max-width: 1000px;
-            width: 100%;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-        }
-
-        .login-left {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 60px 40px;
-            color: white;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .login-left h1 {
-            font-size: 2.5rem;
-            font-weight: 700;
-            margin-bottom: 20px;
-        }
-
-        .login-left p {
-            font-size: 1.1rem;
-            opacity: 0.9;
-            line-height: 1.6;
-        }
-
-        .login-right {
-            padding: 60px 50px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .login-right h2 {
-            font-size: 1.8rem;
-            color: #1a202c;
-            margin-bottom: 10px;
-        }
-
-        .login-right .subtitle {
-            color: #718096;
-            margin-bottom: 40px;
-        }
-
-        .form-group {
-            margin-bottom: 24px;
-        }
-
-        label {
-            display: block;
-            color: #2d3748;
-            font-weight: 600;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
-        }
-
-        input {
-            width: 100%;
-            padding: 14px 16px;
-            border: 2px solid #e2e8f0;
-            border-radius: 10px;
-            font-size: 1rem;
-            transition: all 0.3s;
-            font-family: inherit;
-        }
-
-        input:focus {
-            outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-        }
-
-        button {
-            width: 100%;
-            padding: 16px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 10px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-family: inherit;
-        }
-
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.3);
-        }
-
-        button:active {
-            transform: translateY(0);
-        }
-
-        .error-message {
-            background: #fed7d7;
-            color: #c53030;
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            display: none;
-            font-size: 0.9rem;
-        }
-
-        .success-message {
-            background: #d4edda;
-            color: #155724;
-            padding: 12px 16px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-            display: none;
-            font-size: 0.9rem;
-        }
-
-        .features {
-            margin-top: 40px;
-        }
-
-        .feature-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 16px;
-        }
-
-        .feature-icon {
-            width: 40px;
-            height: 40px;
-            background: rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-right: 16px;
-            font-size: 1.2rem;
-        }
-
-        .link-text {
-            text-align: center;
-            margin-top: 24px;
-            color: #718096;
-            font-size: 0.9rem;
-        }
-
-        .link-text a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .link-text a:hover {
-            text-decoration: underline;
-        }
-
-        @media (max-width: 768px) {
-            .login-container {
-                grid-template-columns: 1fr;
-            }
-
-            .login-left {
-                display: none;
-            }
-        }
-    </style>
+    <title>Create Account | TekLeaders AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/auth.css?v=3">
 </head>
 
 <body>
-    <div class="login-container">
-        <div class="login-left">
-            <h1>🚀 Hiring Portal</h1>
-            <p>Join our AI-Powered recruitment platform today. Streamline your hiring process from day one.</p>
+    <div class="auth-page">
+        <div class="auth-wrapper">
+            <div class="auth-animation">
+                <div id="lottie-animation"></div>
+            </div>
 
-            <div class="features">
-                <div class="feature-item">
-                    <div class="feature-icon">👤</div>
-                    <div>
-                        <strong>Create Account</strong><br>
-                        <span style="opacity: 0.8; font-size: 0.9rem;">Quick and easy registration</span>
-                    </div>
+            <div class="auth-form-panel">
+                <div class="auth-header">
+                    <h1>Create Account</h1>
+                    <p>Sign up to start your recruitment journey</p>
                 </div>
-                <div class="feature-item">
-                    <div class="feature-icon">🔐</div>
-                    <div>
-                        <strong>Secure Access</strong><br>
-                        <span style="opacity: 0.8; font-size: 0.9rem;">Protected data and insights</span>
+
+                <div id="error-message" class="error-message"></div>
+
+                <form id="signup-form">
+                    <div class="form-group">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" required placeholder="Enter your email" autofocus>
                     </div>
-                </div>
-                <div class="feature-item">
-                    <div class="feature-icon">🚀</div>
-                    <div>
-                        <strong>Get Started</strong><br>
-                        <span style="opacity: 0.8; font-size: 0.9rem;">Immediate access to tools</span>
+
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required minlength="6"
+                            placeholder="Create a password">
                     </div>
+
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required minlength="6"
+                            placeholder="Re-enter your password">
+                    </div>
+
+                    <button type="submit" class="btn">Sign Up</button>
+                </form>
+
+                <div class="auth-footer-link">
+                    Already have an account? <a href="/static/login.html">Sign in</a>
                 </div>
             </div>
         </div>
-
-        <div class="login-right">
-            <h2>Create Account</h2>
-            <p class="subtitle">Sign up to get started</p>
-
-            <div id="error-msg" class="error-message"></div>
-            <div id="success-msg" class="success-message">Account created! Redirecting to login...</div>
-
-            <form id="signup-form">
-                <div class="form-group">
-                    <label for="username">Username</label>
-                    <input type="text" id="username" name="username" placeholder="Choose a username" required
-                        autofocus>
-                </div>
-
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" name="password" placeholder="Choose a password" required>
-                </div>
-                
-                 <div class="form-group">
-                    <label for="confirm-password">Confirm Password</label>
-                    <input type="password" id="confirm-password" name="confirm-password" placeholder="Confirm password" required>
-                </div>
-
-                <button type="submit">Sign Up</button>
-            </form>
-
-            <p class="link-text">
-                Already have an account? <a href="/static/login.html">Sign In</a>
-            </p>
-        </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+    <script src="/static/auth-api.js?v=6"></script>
     <script>
+        lottie.loadAnimation({
+            container: document.getElementById('lottie-animation'),
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            path: staticUrl('/static/register.json')
+        });
+
+        function formatErrorDetail(detail) {
+            if (!detail) return 'Signup failed';
+            if (typeof detail === 'string') return detail;
+            if (Array.isArray(detail)) {
+                return detail.map((d) => {
+                    const field = (d.loc || []).filter((x) => x !== 'body').pop();
+                    const msg = d.msg || 'Invalid value';
+                    return field ? `${field}: ${msg}` : msg;
+                }).join(' ');
+            }
+            return 'Signup failed';
+        }
+
         document.getElementById('signup-form').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('username').value;
+
+            const email = document.getElementById('email').value.trim();
             const password = document.getElementById('password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-            
-            const errorMsg = document.getElementById('error-msg');
-            const successMsg = document.getElementById('success-msg');
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const errorDiv = document.getElementById('error-message');
             const button = e.target.querySelector('button');
 
-            errorMsg.style.display = 'none';
-            successMsg.style.display = 'none';
-            
+            errorDiv.style.display = 'none';
+
             if (password !== confirmPassword) {
-                errorMsg.textContent = "Passwords do not match";
-                errorMsg.style.display = 'block';
+                errorDiv.textContent = 'Passwords do not match';
+                errorDiv.style.display = 'block';
                 return;
             }
 
-            // Show loading state
-            button.textContent = 'Creating Account...';
+            if (password.length < 6) {
+                errorDiv.textContent = 'Password must be at least 6 characters';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            if (!email) {
+                errorDiv.textContent = 'Email is required';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            button.textContent = 'Creating account...';
             button.disabled = true;
 
             try {
-                const response = await fetch('/signup', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username, password })
+                const { response, data } = await postSignup({
+                    email,
+                    username: email,
+                    password,
+                    confirm_password: confirmPassword
                 });
 
-                const data = await response.json();
-
-                if (response.ok && data.success) {
-                    successMsg.style.display = 'block';
-                    setTimeout(() => {
-                        window.location.href = '/static/login.html';
-                    }, 1500);
+                if (response.ok) {
+                    window.location.href = `${getApiBase()}/static/login.html`;
                 } else {
-                    errorMsg.textContent = data.error || 'Registration failed';
-                    errorMsg.style.display = 'block';
+                    errorDiv.textContent = formatErrorDetail(data.detail);
+                    errorDiv.style.display = 'block';
                     button.textContent = 'Sign Up';
                     button.disabled = false;
                 }
             } catch (err) {
-                console.error('Signup error:', err);
-                errorMsg.textContent = 'An error occurred. Please try again.';
-                errorMsg.style.display = 'block';
+                errorDiv.textContent = 'Network error. Please try again.';
+                errorDiv.style.display = 'block';
                 button.textContent = 'Sign Up';
                 button.disabled = false;
             }

@@ -1,0 +1,27 @@
+{
+  "name": "hiring",
+  "version": "1.0.0",
+  "description": "This repository was converted to a minimal Django project that serves the previously-built FastAPI endpoints as Django views and exposes a small frontend UI.",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tekleaderssolutions-AI/recruitment.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/tekleaderssolutions-AI/recruitment/issues"
+  },
+  "homepage": "https://github.com/tekleaderssolutions-AI/recruitment#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.58.1",
+    "@types/node": "^25.2.0"
+  }
+}

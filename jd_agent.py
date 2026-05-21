@@ -8,7 +8,7 @@ This module wires together:
 """
 from typing import Dict, Any, Optional
 
-from jd_parser import parse_jd_with_function_call
+from jd_openai_service import parse_jd_openai as parse_jd_with_function_call
 from jd_memory import create_memory
 from pii import redact_pii, log_pii_redaction
 
@@ -20,6 +20,7 @@ def analyze_job_description(
     source_url: Optional[str] = None,
     created_by: str = "jd_analyzer",
     user_id: Optional[str] = None,
+    client_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Full JD processing pipeline used by the FastAPI layer.
@@ -40,6 +41,7 @@ def analyze_job_description(
         created_by=created_by,
         pii_flag=bool(pii_types),
         user_id=user_id,
+        client_id=client_id,
     )
 
 

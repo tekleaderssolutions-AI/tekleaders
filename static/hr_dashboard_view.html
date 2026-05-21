@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard | TekLeaders AI</title>
+  <meta name="description" content="Track interview schedules, candidate feedback metrics, and final decision status." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/portal-nav.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary-color: #c026d3;
+      --primary-hover: #a21caf;
+      --bg-color: #ffffff;
+      --card-bg: #ffffff;
+      --text-color: #1f2937;
+      --border-color: #f5d0fe;
+      --purple: #8b5cf6;
+      --green: #059669;
+      --amber: #d97706;
+      --red: #dc2626;
+      --text-secondary: #4b5563;
+      --text-muted: #6b7280;
+      --gradient: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #ffffff;
+      color: var(--text-color);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    .page-wrapper { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 32px 20px 80px; }
+    .header { text-align: center; margin-bottom: 32px; animation: fadeDown 0.6s ease both; }
+    .header h1 {
+      font-size: clamp(26px, 5vw, 38px); font-weight: 800;
+      background: var(--gradient);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      line-height: 1.2; margin-bottom: 12px;
+    }
+    .header p { color: var(--text-secondary); font-size: 16px; max-width: 560px; margin: 0 auto; }
+    .header-links {
+      margin-top: 16px;
+      display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+    }
+    .header-links a {
+      font-size: 13px; font-weight: 600; color: var(--purple);
+      text-decoration: none; padding: 6px 14px; border-radius: 8px;
+      border: 1px solid #e5e7eb; background: #faf5ff;
+    }
+    .header-links a:hover { border-color: var(--primary-color); }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px; padding: 20px;
+      box-shadow: 0 10px 30px rgba(192, 38, 211, 0.05);
+    }
+    .stat-value { font-size: 28px; font-weight: 800; color: var(--text-color); margin-bottom: 4px; }
+    .stat-label { font-size: 12px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; }
+
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+      margin-bottom: 20px; padding: 16px; background: #fafafa;
+      border: 1px solid #e5e7eb; border-radius: 12px;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 4px; min-width: 140px; flex: 1; }
+    .filter-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+    .filter-group input, .filter-group select {
+      padding: 8px 12px; border: 1px solid #e5e7eb; border-radius: 8px;
+      font-size: 14px; font-family: inherit;
+    }
+    .filter-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 8px;
+      border: none; cursor: pointer; font-family: inherit;
+    }
+    .btn-primary { background: var(--gradient); color: white; }
+    .btn-ghost { background: white; border: 1px solid #e5e7eb; color: var(--text-secondary); }
+    .filter-hint { font-size: 12px; color: var(--text-muted); width: 100%; margin-top: 4px; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px; padding: 28px;
+      box-shadow: 0 10px 35px rgba(192, 38, 211, 0.06);
+    }
+    .card-header { margin-bottom: 20px; }
+    .card-title { font-size: 18px; font-weight: 700; }
+    .card-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 4px; }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 12px 14px; text-align: left;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted); border-bottom: 1px solid var(--border-color);
+    }
+    tbody tr { border-bottom: 1px solid #e5e7eb; }
+    tbody tr:hover { background: #fafafa; }
+    tbody td { padding: 14px; font-size: 14px; vertical-align: middle; }
+    .candidate-name { font-weight: 600; }
+    .candidate-email { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .status-badge {
+      display: inline-flex; padding: 5px 12px; border-radius: 100px;
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .status-scheduled { background: #ecfeff; color: #0891b2; border: 1px solid #a5f3fc; }
+    .status-completed { background: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+    .status-rejected { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+    .status-hired { background: #faf5ff; color: var(--purple); border: 1px solid #e5e7eb; }
+    .action-btn {
+      display: inline-flex; background: var(--gradient); color: white; border: none;
+      padding: 8px 16px; font-size: 13px; font-weight: 600; border-radius: 8px;
+      text-decoration: none;
+    }
+    .given-badge { font-size: 13px; font-weight: 600; color: var(--green); }
+    .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+
+    @keyframes fadeDown { from { opacity: 0; transform: translateY(-12px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <div class="page-wrapper">
+    <div class="header">
+      <h1>Dashboard</h1>
+      <p>Candidates you contacted via <strong>Send Mail</strong> from the recruiter portal — interview schedule and feedback.</p>
+      <div class="header-links">
+        <a href="/interviews/status/legacy">Advanced table (filters, sort, all columns)</a>
+        <a href="/static/recruiter_portal_view.html">Recruiter portal</a>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="total-count">-</div>
+        <div class="stat-label">Emails sent (in view)</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="pending-count" style="color: var(--amber);">-</div>
+        <div class="stat-label">Pending feedback</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="hired-count" style="color: var(--green);">-</div>
+        <div class="stat-label">Candidates hired</div>
+      </div>
+    </div>
+
+    <div class="filters">
+      <div class="filter-group" style="flex: 2;">
+        <label for="filter-q">Search</label>
+        <input type="search" id="filter-q" placeholder="Name, email, or role…" />
+      </div>
+      <div class="filter-group">
+        <label for="filter-jd">Job (JD)</label>
+        <select id="filter-jd"><option value="">All roles</option></select>
+      </div>
+      <div class="filter-group">
+        <label for="filter-status">Status</label>
+        <select id="filter-status">
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="completed">Completed</option>
+          <option value="hired">Hired</option>
+          <option value="rejected">Rejected</option>
+        </select>
+      </div>
+      <div class="filter-actions">
+        <button type="button" class="btn btn-primary" id="btn-apply">Apply</button>
+        <button type="button" class="btn btn-ghost" id="btn-reset">Reset</button>
+      </div>
+      <p class="filter-hint">Only candidates who received outreach email from Send Mail are listed. Upload-only resumes no longer appear here.</p>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title">Live interview feed</div>
+        <div class="card-subtitle">Schedule tracking and feedback for emailed candidates</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th>Position / role</th>
+              <th>Email sent</th>
+              <th>Interview date</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="interviews-body">
+            <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/auth-api.js?v=6"></script>
+  <script src="/static/portal-nav.js?v=1"></script>
+  <script>
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      try {
+        return new Date(iso).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch { return '—'; }
+    }
+
+    function buildQuery() {
+      const q = document.getElementById('filter-q').value.trim();
+      const jd = document.getElementById('filter-jd').value;
+      const status = document.getElementById('filter-status').value;
+      const params = new URLSearchParams({ email_sent_only: 'true' });
+      if (jd) params.set('jd_id', jd);
+      if (status) params.set('status', status);
+      if (q) params.set('q', q);
+      return params.toString();
+    }
+
+    async function loadJds() {
+      const API = getApiBase();
+      const res = await fetch(`${API}/jds`, { headers: getAuthHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      const sel = document.getElementById('filter-jd');
+      const list = Array.isArray(data) ? data : (data.jds || []);
+      (Array.isArray(list) ? list : []).forEach(jd => {
+        const id = jd.id || jd.memory_id;
+        const title = jd.title || jd.job_title || id;
+        if (!id) return;
+        const opt = document.createElement('option');
+        opt.value = id;
+        opt.textContent = title;
+        sel.appendChild(opt);
+      });
+    }
+
+    async function loadDashboard() {
+      if (!requireAuth()) return;
+      const tbody = document.getElementById('interviews-body');
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">Loading…</td></tr>';
+      try {
+        const API = getApiBase();
+        const res = await fetch(`${API}/api/interviews/all?${buildQuery()}`, {
+          headers: getAuthHeaders(),
+        });
+        if (res.status === 401) { requireAuth(); return; }
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Failed to fetch');
+
+        tbody.innerHTML = '';
+        let total = 0, pending = 0, hired = 0;
+        const interviews = data.interviews || [];
+
+        if (interviews.length === 0) {
+          tbody.innerHTML = `
+            <tr><td colspan="6">
+              <div class="empty-state">
+                No emailed candidates match these filters.<br/>
+                Use <strong>Send Mail</strong> on the recruiter portal, then refresh.
+              </div>
+            </td></tr>`;
+          document.getElementById('total-count').textContent = '0';
+          document.getElementById('pending-count').textContent = '0';
+          document.getElementById('hired-count').textContent = '0';
+          return;
+        }
+
+        interviews.forEach(interview => {
+          total++;
+          if (!interview.feedback_submitted) pending++;
+          if (interview.status === 'Hired') hired++;
+
+          const statusClass = interview.status === 'Scheduled' ? 'status-scheduled' :
+            interview.status === 'Completed' ? 'status-completed' :
+            interview.status === 'Hired' ? 'status-hired' : 'status-rejected';
+
+          const actionHtml = interview.feedback_submitted
+            ? `<span class="given-badge">✓ Feedback given</span>`
+            : `<a href="/static/hr-feedback-form.html?id=${encodeURIComponent(interview.id)}" class="action-btn">Give feedback</a>`;
+
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>
+              <div class="candidate-name">${escHtml(interview.candidate_name || 'Unknown')}</div>
+              <div class="candidate-email">${escHtml(interview.candidate_email || '—')}</div>
+            </td>
+            <td>${escHtml(interview.jd_title || '—')}</td>
+            <td style="color:var(--text-secondary);">${fmtDate(interview.email_sent_at)}</td>
+            <td style="color:var(--text-secondary);">${fmtDate(interview.interview_date)}</td>
+            <td><span class="status-badge ${statusClass}">${escHtml(interview.status)}</span></td>
+            <td>${actionHtml}</td>
+          `;
+          tbody.appendChild(row);
+        });
+
+        document.getElementById('total-count').textContent = String(total);
+        document.getElementById('pending-count').textContent = String(pending);
+        document.getElementById('hired-count').textContent = String(hired);
+      } catch (err) {
+        console.error(err);
+        tbody.innerHTML = `<tr><td colspan="6" style="color:var(--red);text-align:center;padding:40px;">Error: ${escHtml(err.message)}</td></tr>`;
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      if (!requireAuth()) return;
+      renderPortalNav('dashboard');
+      loadJds();
+      loadDashboard();
+      document.getElementById('btn-apply').addEventListener('click', loadDashboard);
+      document.getElementById('btn-reset').addEventListener('click', () => {
+        document.getElementById('filter-q').value = '';
+        document.getElementById('filter-jd').value = '';
+        document.getElementById('filter-status').value = '';
+        loadDashboard();
+      });
+      document.getElementById('filter-q').addEventListener('keydown', e => {
+        if (e.key === 'Enter') loadDashboard();
+      });
+    });
+  </script>
+</body>
+</html>

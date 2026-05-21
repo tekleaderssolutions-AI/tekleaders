@@ -3,6 +3,8 @@ from . import views
 
 urlpatterns = [
     path('', views.index, name='index'),
+    path('api/health', views.api_health, name='api_health'),
+    path('health', views.api_health, name='health'),
     path('init-db', views.init_db, name='init_db'),
     path('jd/analyze/pdf', views.analyze_jd_pdf, name='analyze_jd_pdf'),
     path('resumes/upload', views.upload_resumes, name='upload_resumes'),

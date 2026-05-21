@@ -45,3 +45,4 @@ htmlcov/
 # Credentials (keep template only)
 token.json
 credentials.json
+node_modules/

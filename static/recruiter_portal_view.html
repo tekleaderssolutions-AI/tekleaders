@@ -1,0 +1,972 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+  <title>Candidates Portal | TekLeaders AI</title>
+  <meta name="description" content="Select a role, upload candidate resumes, and instantly see AI-ranked applicant scores." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --primary-color: #c026d3;
+      --primary-hover: #a21caf;
+      --bg-color: #ffffff;
+      --card-bg: #ffffff;
+      --text-color: #1f2937;
+      --border-color: #f5d0fe;
+      
+      --purple: #8b5cf6;
+      --purple-light: #a78bfa;
+      --pink: #ec4899;
+      --text-secondary: #4b5563;
+      --text-muted: #6b7280;
+      --gradient: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+    }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #ffffff;
+      color: var(--text-color);
+      min-height: 100vh;
+    }
+    .page-wrapper { position: relative; z-index: 1; max-width: 900px; margin: 0 auto; padding: 32px 20px 80px; }
+
+    /* Header */
+    .back-link {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--text-secondary); font-size: 14px; text-decoration: none;
+      margin-bottom: 32px; transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--primary-color); }
+    .header { text-align: center; margin-bottom: 48px; animation: fadeDown 0.6s ease both; }
+    .header-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: #ffffff; border: 1px solid #e5e7eb;
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.05em;
+      color: var(--primary-color); margin-bottom: 20px; text-transform: uppercase;
+    }
+    .header-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--primary-color); animation: pulse 2s infinite; }
+    .header h1 {
+      font-size: clamp(26px, 5vw, 38px); font-weight: 800;
+      background: var(--gradient);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+      line-height: 1.2; margin-bottom: 12px;
+    }
+    .header p { color: var(--text-secondary); font-size: 16px; max-width: 500px; margin: 0 auto; }
+
+    /* Cards */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 20px; padding: 32px; margin-bottom: 24px;
+      box-shadow: 0 10px 35px rgba(192, 38, 211, 0.06), 0 1px 3px rgba(192, 38, 211, 0.03);
+      transition: transform 0.2s, box-shadow 0.2s;
+      animation: fadeUp 0.6s ease both;
+    }
+    .card:nth-child(2) { animation-delay: 0.1s; }
+    .card:nth-child(3) { animation-delay: 0.2s; }
+    .card:nth-child(4) { animation-delay: 0.3s; }
+    .card:hover { transform: translateY(-2px); box-shadow: 0 15px 45px rgba(192, 38, 211, 0.1); }
+
+    .card-header { display: flex; align-items: center; gap: 14px; margin-bottom: 28px; }
+    .card-icon { width: 44px; height: 44px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+    .card-icon.cyan { background: #ffffff; color: #0891b2; border: 1px solid #e5e7eb; }
+    .card-icon.purple { background: #ffffff; color: var(--purple); border: 1px solid #e5e7eb; }
+    .card-icon.green { background: #ffffff; color: #059669; border: 1px solid #e5e7eb; }
+    .card-title { font-size: 18px; font-weight: 700; color: var(--text-color); }
+    .card-subtitle { font-size: 13px; color: var(--text-secondary); margin-top: 2px; }
+    .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--gradient); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: white; flex-shrink: 0; }
+
+    /* Form */
+    label { display: block; font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 7px; letter-spacing: 0.04em; text-transform: uppercase; }
+    select {
+      width: 100%; background: #ffffff;
+      border: 1px solid var(--border-color); border-radius: 12px;
+      color: var(--text-color); font-size: 15px; font-family: 'Inter', sans-serif;
+      padding: 13px 44px 13px 16px; outline: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 14px center;
+      appearance: none; -webkit-appearance: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    select option { background: #ffffff; color: var(--text-color); }
+    select:focus { border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(192, 38, 211, 0.12); }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 600px) { .form-row { grid-template-columns: 1fr; } }
+
+    /* Active JD badge */
+    .active-jd-strip {
+      display: none; align-items: center; gap: 12px;
+      background: #ffffff; border: 1px solid #e5e7eb;
+      border-radius: 12px; padding: 12px 16px; margin-top: 16px;
+      font-size: 14px; color: var(--purple);
+    }
+    .active-jd-strip.show { display: flex; }
+    .active-jd-strip strong { color: var(--text-color); }
+
+    /* File drop */
+    .drop-zone {
+      border: 2px dashed #d8b4fe; border-radius: 16px;
+      padding: 44px 24px; text-align: center; cursor: pointer; position: relative;
+      background: #ffffff;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone:hover, .drop-zone.dragging { border-color: var(--primary-color); background: #ffffff; }
+    .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .drop-icon { font-size: 42px; margin-bottom: 14px; }
+    .drop-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; color: var(--text-color); }
+    .drop-sub { font-size: 13px; color: var(--text-muted); }
+    .file-count-badge {
+      display: none; margin-top: 14px;
+      background: #e5e7eb; border: 1px solid #c084fc;
+      border-radius: 8px; padding: 8px 14px; font-size: 13px; color: var(--purple); font-weight: 600;
+    }
+    .file-count-badge.show { display: inline-block; }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      border: none; border-radius: 12px;
+      font-family: 'Inter', sans-serif; font-size: 15px; font-weight: 600;
+      cursor: pointer; padding: 13px 24px; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--gradient); color: white; box-shadow: 0 4px 15px rgba(192, 38, 211, 0.2); }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(192, 38, 211, 0.35); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+    .btn-ghost { background: #ffffff; color: var(--text-secondary); border: 1px solid var(--border-color); }
+    .btn-ghost:hover { background: #ffffff; color: var(--text-color); }
+    .btn-full { width: 100%; }
+
+    /* Progress */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner { width: 18px; height: 18px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin 0.7s linear infinite; display: none; }
+    .spinner.show { display: block; }
+    .progress-wrap { height: 4px; background: rgba(0,0,0,0.05); border-radius: 4px; overflow: hidden; margin-top: 16px; display: none; }
+    .progress-wrap.show { display: block; }
+    .progress-bar { height: 100%; background: var(--gradient); border-radius: 4px; width: 0%; transition: width 0.4s ease; }
+
+    /* Upload results mini list */
+    .upload-results { margin-top: 16px; display: none; }
+    .upload-results.show { display: block; }
+    .upload-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 14px; border-radius: 10px; margin-bottom: 8px;
+      font-size: 13px;
+    }
+    .upload-item.ok { background: #ecfdf5; border: 1px solid #a7f3d0; color: #065f46; }
+    .upload-item.error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; }
+    .upload-item.skipped { background: #fffbeb; border: 1px solid #fde68a; color: #92400e; }
+    .upload-item-icon { font-size: 16px; flex-shrink: 0; }
+    .upload-item-name { font-weight: 600; }
+    .upload-item-detail { font-size: 12px; opacity: 0.85; }
+    .ats-chip {
+      margin-left: auto; flex-shrink: 0;
+      padding: 3px 10px; border-radius: 100px;
+      font-size: 12px; font-weight: 700;
+    }
+
+    /* Candidate table */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      padding: 12px 16px; text-align: left;
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+      color: var(--text-muted); border-bottom: 1px solid var(--border-color);
+      background-color: #ffffff;
+    }
+    tbody tr { transition: background 0.15s; border-bottom: 1px solid #e5e7eb; }
+    tbody tr:hover { background: #ffffff; }
+    tbody td { padding: 14px 16px; font-size: 14px; vertical-align: middle; }
+    .rank-badge {
+      width: 28px; height: 28px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 800;
+    }
+    .rank-1 { background: linear-gradient(135deg,#fbbf24,#f59e0b); color: #78350f; }
+    .rank-2 { background: linear-gradient(135deg,#e2e8f0,#94a3b8); color: #1e293b; }
+    .rank-3 { background: linear-gradient(135deg,#c2855a,#a16348); color: white; }
+    .rank-other { background: #f3f4f6; color: var(--text-secondary); }
+    .candidate-name { font-weight: 600; color: var(--text-color); }
+    .candidate-title { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+    .ats-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 12px; border-radius: 100px;
+      font-size: 13px; font-weight: 700;
+    }
+    .ats-high { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+    .ats-mid { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .ats-low { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+    .source-tag {
+      display: inline-block; padding: 2px 8px; border-radius: 6px;
+      font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    }
+    .source-direct { background: #ffffff; color: var(--purple); border: 1px solid #e5e7eb; }
+    .source-global { background: #ffffff; color: #0891b2; border: 1px solid #e5e7eb; }
+    .empty-state { text-align: center; padding: 48px 20px; color: var(--text-muted); }
+    .empty-state-icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state-text { font-size: 14px; }
+
+    .lock-overlay { background: #ffffff; border: 1px dashed #e5e7eb; border-radius: 14px; padding: 28px; text-align: center; color: var(--text-muted); font-size: 14px; }
+    .lock-overlay .lock-icon { font-size: 28px; margin-bottom: 8px; }
+
+    .loading-dots span { animation: blink 1.4s infinite both; font-size: 20px; }
+    .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+    .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes blink { 0%,80%,100% { opacity: 0; } 40% { opacity: 1; } }
+
+    @keyframes fadeDown { from { opacity:0; transform:translateY(-20px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.4; } }
+
+    .section-title { font-size: 13px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .section-title::after { content: ''; flex: 1; height: 1px; background: var(--border-color); }
+
+    /* Rankings toolbar & tiles */
+    .rankings-toolbar {
+      display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+      margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border-color);
+    }
+    .rankings-toolbar .field { flex: 0 0 auto; }
+    .rankings-toolbar .field-grow { flex: 1; min-width: 120px; }
+    .rankings-toolbar select { width: auto; min-width: 140px; padding: 10px 36px 10px 12px; font-size: 14px; }
+    .top-k-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .rankings-toolbar .top-k-manual {
+      display: none; width: 72px;
+      padding: 10px 12px; font-size: 14px;
+    }
+    .rankings-toolbar .top-k-manual.show { display: block; }
+    .rankings-footer {
+      display: flex; justify-content: flex-start; align-items: center;
+      margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border-color);
+    }
+    .candidate-tile {
+      border: 1px solid var(--border-color); border-radius: 14px;
+      padding: 18px 20px; margin-bottom: 14px;
+      background: #ffffff;
+      box-shadow: 0 4px 16px rgba(192, 38, 211, 0.04);
+    }
+    .candidate-tile-header {
+      display: flex; align-items: flex-start; gap: 12px; margin-bottom: 14px;
+    }
+    .candidate-tile-header input[type="checkbox"] {
+      width: 18px; height: 18px; margin-top: 4px; accent-color: var(--primary-color);
+    }
+    .candidate-tile-body { flex: 1; min-width: 0; }
+    .candidate-tile-meta { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .insight-block { margin-top: 12px; }
+    .insight-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--text-secondary); margin-bottom: 6px;
+    }
+    .insight-text { font-size: 13px; line-height: 1.55; color: var(--text-color); }
+    .skill-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+    .skill-tag {
+      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 100px;
+    }
+    .skill-matched { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
+    .skill-missing { background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }
+
+    /* Mini source legend */
+    .legend { display: flex; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+    .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); }
+  </style>
+</head>
+<body>
+<div class="page-wrapper">
+  <a href="/" class="back-link">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="15 18 9 12 15 6"/></svg>
+    Back to Home
+  </a>
+
+  <div class="header">
+    <h1>Candidates Portal</h1>
+    <p>Select a client and role, upload candidate resumes, and get instant AI-powered match scores.</p>
+  </div>
+
+  <!-- CARD 1: Select Client & Role -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Select Client & Role</div>
+        <div class="card-subtitle">Filter job descriptions by client company, then pick the role</div>
+      </div>
+    </div>
+
+    <div class="form-row">
+      <div>
+        <label for="clientSelect">Client Company</label>
+        <select id="clientSelect" onchange="onClientChange()">
+          <option value="">— Loading clients… —</option>
+        </select>
+      </div>
+      <div>
+        <label for="roleSelect">Job Description / Role</label>
+        <select id="roleSelect" onchange="onRoleChange()" disabled>
+          <option value="">— Select a client first —</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="active-jd-strip" id="activeJdStrip">
+      <span>Active Role: <strong id="activeJdName"></strong></span>
+      <span id="activeJdId" style="font-family:monospace;font-size:11px;color:var(--text-muted);margin-left:auto;"></span>
+    </div>
+  </div>
+
+  <!-- CARD 2: Upload Resumes -->
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Upload Candidate Resumes</div>
+        <div class="card-subtitle">Upload PDF, Word (.doc/.docx), or ZIP — ranked candidates appear in Candidate Rankings below</div>
+      </div>
+    </div>
+
+    <div id="uploadGate">
+      <div class="lock-overlay">
+        Select a client and role above to enable resume uploads
+      </div>
+    </div>
+
+    <div id="uploadForm" style="display:none;">
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="resumeFiles" accept=".pdf,.doc,.docx,.zip,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/zip" multiple onchange="onFilesSelect()" />
+        <div class="drop-title">Drop candidate resumes here</div>
+        <div class="drop-sub">PDF, Word, or ZIP · Multiple files allowed</div>
+        <div class="file-count-badge" id="fileCountBadge"></div>
+      </div>
+
+      <div class="progress-wrap" id="uploadProgress">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+
+      <div style="margin-top:20px;">
+        <button class="btn btn-primary btn-full" id="uploadBtn" onclick="uploadResumes()" disabled>
+          <span id="uploadSpinner" class="spinner"></span>
+          <span id="uploadBtnText">Upload & Match Resumes</span>
+        </button>
+      </div>
+
+      <div class="upload-results" id="uploadResults"></div>
+    </div>
+  </div>
+
+  <!-- CARD 3: Candidate Rankings -->
+  <div class="card" id="rankingsCard">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Candidate Rankings</div>
+        <div class="card-subtitle">Scan resumes against the role — skills match, gaps, and selection reasoning</div>
+      </div>
+    </div>
+
+    <div class="rankings-toolbar">
+      <div class="field">
+        <label for="topKSelect">Top K</label>
+        <div class="top-k-row">
+          <select id="topKSelect" onchange="onTopKChange()">
+            <option value="3">Top 3</option>
+            <option value="5" selected>Top 5</option>
+            <option value="10">Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="custom">Enter manually</option>
+          </select>
+          <input type="number" id="topKManual" class="top-k-manual" min="1" max="50" value="7" title="1–50 candidates" aria-label="Custom top K count" />
+        </div>
+      </div>
+      <div class="field field-grow"></div>
+      <button class="btn btn-primary" id="scanBtn" onclick="scanRankings()" disabled>Scan</button>
+    </div>
+
+    <div id="rankingsArea">
+      <div class="empty-state">
+        <div class="empty-state-text">Select a client and role, then click Scan</div>
+      </div>
+    </div>
+
+    <div class="rankings-footer">
+      <button class="btn btn-primary" id="sendMailBtn" onclick="sendMailToSelected()" disabled>Send Mail</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/auth-api.js?v=18"></script>
+<script>
+  const API = getApiBase();
+  const RESUME_EXTS = ['.pdf', '.doc', '.docx', '.zip'];
+
+  function isResumeUploadFile(file) {
+    const n = (file.name || '').toLowerCase();
+    return RESUME_EXTS.some(ext => n.endsWith(ext));
+  }
+
+  let selectedClientId = null;
+  let selectedJdId = null;
+  let selectedJdTitle = '';
+  let rankedCandidates = [];
+  let lastUploadResults = [];
+
+  function parseApiError(data) {
+    if (!data) return 'Request failed';
+    const d = data.detail;
+    if (typeof d === 'string') return d;
+    if (Array.isArray(d)) return d.map(x => x.msg || String(x)).join('; ');
+    return JSON.stringify(data);
+  }
+
+  function scrollToRankings() {
+    document.getElementById('rankingsCard')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function checkResumeServer() {
+    try {
+      const res = await fetch(`${API}/api/health`);
+      const h = await res.json();
+      if (!String(h.server_build || '').includes('hiring-openai-v') || h.resume_ai_provider !== 'openai') {
+        console.warn('Old hiring server — restart RUN_HIRING_SERVER.bat', h);
+      }
+    } catch (e) {
+      console.warn('Cannot reach hiring server on', API, e);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!requireAuth()) return;
+    checkResumeServer();
+    loadClients();
+  });
+
+  // ── CLIENTS ────────────────────────────────────────────────
+  async function loadClients() {
+    try {
+      const res = await fetch(`${API}/clients`, { headers: getAuthHeaders() });
+      if (res.status === 401) { requireAuth(); return; }
+      const data = await res.json();
+      const clients = Array.isArray(data) ? data : (data.clients || []);
+      const sel = document.getElementById('clientSelect');
+      sel.innerHTML = '<option value="">— Select a client —</option>';
+      clients.forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.id; o.textContent = `${c.name}${c.industry ? ' · '+c.industry : ''}`;
+        sel.appendChild(o);
+      });
+    } catch(e) {
+      document.getElementById('clientSelect').innerHTML = '<option value="">— Error loading —</option>';
+    }
+  }
+
+  async function onClientChange() {
+    selectedClientId = document.getElementById('clientSelect').value || null;
+    const roleSel = document.getElementById('roleSelect');
+    selectedJdId = null;
+    selectedJdTitle = '';
+    document.getElementById('activeJdStrip').classList.remove('show');
+    resetUploadSection();
+    resetRankings();
+
+    if (!selectedClientId) {
+      roleSel.innerHTML = '<option value="">— Select a client first —</option>';
+      roleSel.disabled = true;
+      return;
+    }
+
+    roleSel.innerHTML = '<option value="">— Loading roles… —</option>';
+    roleSel.disabled = true;
+    try {
+      const res = await fetch(`${API}/jds?client_id=${selectedClientId}`, { headers: getAuthHeaders() });
+      if (res.status === 401) { requireAuth(); return; }
+      const data = await res.json();
+      const jds = Array.isArray(data) ? data : (data.jds || []);
+      roleSel.innerHTML = '<option value="">— Select a role —</option>';
+      jds.forEach(j => {
+        const o = document.createElement('option');
+        o.value = j.id;
+        o.textContent = `${j.title || 'Untitled'}${j.short_id ? ' ['+j.short_id+']' : ''}`;
+        roleSel.appendChild(o);
+      });
+      roleSel.disabled = false;
+      if (jds.length === 0) roleSel.innerHTML = '<option value="">— No JDs for this client —</option>';
+    } catch(e) {
+      roleSel.innerHTML = '<option value="">— Error loading roles —</option>';
+    }
+  }
+
+  function onRoleChange() {
+    const sel = document.getElementById('roleSelect');
+    selectedJdId = sel.value || null;
+    selectedJdTitle = sel.options[sel.selectedIndex]?.textContent || '';
+
+    const strip = document.getElementById('activeJdStrip');
+    const gate = document.getElementById('uploadGate');
+    const form = document.getElementById('uploadForm');
+    resetRankings();
+
+    document.getElementById('scanBtn').disabled = !selectedJdId;
+    document.getElementById('sendMailBtn').disabled = true;
+
+    if (selectedJdId) {
+      document.getElementById('activeJdName').textContent = selectedJdTitle;
+      document.getElementById('activeJdId').textContent = selectedJdId.slice(0,8) + '…';
+      strip.classList.add('show');
+      gate.style.display = 'none';
+      form.style.display = 'block';
+    } else {
+      strip.classList.remove('show');
+      gate.style.display = 'block';
+      form.style.display = 'none';
+    }
+  }
+
+  // ── UPLOAD ─────────────────────────────────────────────────
+  function onFilesSelect() {
+    const input = document.getElementById('resumeFiles');
+    const files = input.files;
+    const badge = document.getElementById('fileCountBadge');
+    const btn = document.getElementById('uploadBtn');
+    const valid = Array.from(files).filter(isResumeUploadFile);
+    if (valid.length < files.length) {
+      alert('Some files were skipped. Use PDF, Word (.doc/.docx), or ZIP only.');
+      const dt = new DataTransfer();
+      valid.forEach(f => dt.items.add(f));
+      input.files = dt.files;
+    }
+    if (valid.length > 0) {
+      badge.textContent = `${valid.length} file${valid.length > 1 ? 's' : ''} selected`;
+      badge.classList.add('show');
+      btn.disabled = false;
+    } else {
+      badge.classList.remove('show');
+      btn.disabled = true;
+    }
+  }
+
+  async function uploadResumes() {
+    const files = Array.from(document.getElementById('resumeFiles').files).filter(isResumeUploadFile);
+    if (!files.length) { alert('Please select PDF, Word, or ZIP files.'); return; }
+    if (!selectedJdId) { alert('Please select a role first.'); return; }
+
+    const btn = document.getElementById('uploadBtn');
+    const spinner = document.getElementById('uploadSpinner');
+    const btnText = document.getElementById('uploadBtnText');
+    btn.disabled = true; spinner.classList.add('show'); btnText.textContent = 'Uploading…';
+    animateProgress();
+
+    const fd = new FormData();
+    files.forEach(f => fd.append('files', f));
+    fd.append('jd_id', selectedJdId);
+
+    try {
+      const res = await fetch(`${API}/resumes/upload`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: fd,
+      });
+      if (res.status === 401) { requireAuth(); return; }
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Upload failed');
+
+      const items = data.items || [];
+      lastUploadResults = items;
+      const legacyPdfOnly = items.some(i =>
+        (i.reason || '').toLowerCase() === 'not a pdf'
+      );
+      if (legacyPdfOnly) {
+        throw new Error(
+          'Server is still running old code (PDF-only). End all python.exe in Task Manager, ' +
+          'then double-click RUN_HIRING_SERVER.bat. Check http://127.0.0.1:8001/api/health shows ' +
+          'server_build hiring-openai-v8 and resume_ai_provider openai, then Ctrl+F5.'
+        );
+      }
+
+      stopProgress(100);
+      renderUploadResults(items);
+      const okCount = items.filter(i => i.status === 'ok').length;
+      if (okCount > 0) {
+        showRankingsPrompt(`${okCount} resume(s) uploaded. Click Scan to view ranked candidates.`);
+        document.getElementById('scanBtn').disabled = !selectedJdId;
+      }
+    } catch(e) {
+      stopProgress(0);
+      showUploadError(e.message);
+    } finally {
+      btn.disabled = false; spinner.classList.remove('show'); btnText.textContent = 'Upload & Match Resumes';
+    }
+  }
+
+  function renderUploadResults(items) {
+    const area = document.getElementById('uploadResults');
+    area.innerHTML = '';
+    const ok = items.filter(i => i.status === 'ok').length;
+    const skipped = items.filter(i => i.status === 'skipped').length;
+    const errors = items.filter(i => i.status === 'error' || (i.status !== 'ok' && i.status !== 'skipped'));
+
+    if (ok > 0) {
+      const div = document.createElement('div');
+      div.className = 'upload-item ok';
+      div.innerHTML = `
+        <span class="upload-item-icon">✓</span>
+        <div>
+          <div class="upload-item-name">${ok} resume(s) processed</div>
+          <div class="upload-item-detail">See ranked candidates in Candidate Rankings below (click Scan to refresh).</div>
+        </div>
+      `;
+      area.appendChild(div);
+    }
+    if (skipped > 0) {
+      const div = document.createElement('div');
+      div.className = 'upload-item skipped';
+      div.innerHTML = `
+        <span class="upload-item-icon">—</span>
+        <div>
+          <div class="upload-item-name">${skipped} skipped</div>
+          <div class="upload-item-detail">Unsupported or empty files were not processed.</div>
+        </div>
+      `;
+      area.appendChild(div);
+    }
+    errors.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'upload-item error';
+      div.innerHTML = `
+        <span class="upload-item-icon">Error</span>
+        <div>
+          <div class="upload-item-name">${escHtml(item.file_name)}</div>
+          <div class="upload-item-detail">${escHtml(item.reason || 'Upload failed')}</div>
+        </div>
+      `;
+      area.appendChild(div);
+    });
+    if (!ok && !skipped && !errors.length) {
+      area.innerHTML = '';
+      area.classList.remove('show');
+      return;
+    }
+    area.classList.add('show');
+  }
+
+  function showUploadError(msg) {
+    const area = document.getElementById('uploadResults');
+    area.innerHTML = `<div class="upload-item error"><span class="upload-item-icon">❌</span><div class="upload-item-name">Upload Failed</div><div class="upload-item-detail">${escHtml(msg)}</div></div>`;
+    area.classList.add('show');
+  }
+
+  // ── RANKINGS (Scan + tiles) ────────────────────────────────
+  function onTopKChange() {
+    const manual = document.getElementById('topKManual');
+    const isCustom = document.getElementById('topKSelect').value === 'custom';
+    manual.classList.toggle('show', isCustom);
+    if (isCustom) manual.focus();
+  }
+
+  function getTopK() {
+    const sel = document.getElementById('topKSelect');
+    if (sel.value === 'custom') {
+      const n = parseInt(document.getElementById('topKManual').value, 10);
+      if (!n || n < 1) {
+        alert('Enter a number between 1 and 50.');
+        return null;
+      }
+      return Math.min(50, Math.max(1, n));
+    }
+    return parseInt(sel.value, 10) || 5;
+  }
+
+  function sortByScore(candidates) {
+    return [...(candidates || [])].sort((a, b) => {
+      const sa = a.ats_score != null ? Number(a.ats_score) : -1;
+      const sb = b.ats_score != null ? Number(b.ats_score) : -1;
+      return sb - sa;
+    });
+  }
+
+  function applyTopKRanked(candidates, topK) {
+    const sorted = sortByScore(candidates);
+    return sorted.slice(0, topK).map((c, i) => ({ ...c, rank: i + 1 }));
+  }
+
+  function renderSkillTags(skills, cssClass) {
+    if (!skills || !skills.length) return '';
+    return skills.map(s => `<span class="skill-tag ${cssClass}">${escHtml(s)}</span>`).join('');
+  }
+
+  function insightBlock(label, innerHtml) {
+    if (!innerHtml || !String(innerHtml).trim()) return '';
+    return `
+      <div class="insight-block">
+        <div class="insight-label">${label}</div>
+        ${innerHtml}
+      </div>`;
+  }
+
+  function renderRankings(candidates, topK) {
+    const area = document.getElementById('rankingsArea');
+    const k = topK || getTopK() || 50;
+    rankedCandidates = applyTopKRanked(candidates, k);
+    const sendBtn = document.getElementById('sendMailBtn');
+
+    if (!rankedCandidates.length) {
+      area.innerHTML = `<div class="empty-state"><div class="empty-state-text">No matches found. Upload resumes and scan again.</div></div>`;
+      sendBtn.disabled = true;
+      return;
+    }
+
+    sendBtn.disabled = false;
+
+    let html = '';
+    rankedCandidates.forEach((a, i) => {
+      const rank = a.rank || i + 1;
+      const rankCls = rank === 1 ? 'rank-1' : rank === 2 ? 'rank-2' : rank === 3 ? 'rank-3' : 'rank-other';
+      const score = a.ats_score != null ? a.ats_score : 0;
+      const atsCls = score >= 70 ? 'ats-high' : score >= 45 ? 'ats-mid' : 'ats-low';
+      const rid = a.resume_id || `r-${i}`;
+      const reason = (a.reason_to_select || '').trim();
+      const matchedTags = renderSkillTags(a.matched_skills, 'skill-matched');
+      const missingTags = renderSkillTags(a.missing_skills, 'skill-missing');
+      html += `
+        <div class="candidate-tile" data-resume-id="${escHtml(rid)}">
+          <div class="candidate-tile-header">
+            <input type="checkbox" class="cand-select" data-resume-id="${escHtml(rid)}" checked />
+            <div class="rank-badge ${rankCls}">${rank}</div>
+            <div class="candidate-tile-body">
+              <div class="candidate-name">${escHtml(a.candidate_name || 'Unknown')}</div>
+              <div class="candidate-tile-meta">${escHtml(a.current_title || '')}${a.candidate_email ? ' · ' + escHtml(a.candidate_email) : ''}</div>
+            </div>
+            <span class="ats-badge ${atsCls}">${score}%</span>
+          </div>
+          ${insightBlock('Reason to select', reason ? `<div class="insight-text">${escHtml(reason)}</div>` : '')}
+          ${insightBlock('Top skills matched', matchedTags ? `<div class="skill-tags">${matchedTags}</div>` : '')}
+          ${insightBlock('Missing skills', missingTags ? `<div class="skill-tags">${missingTags}</div>` : '')}
+        </div>
+      `;
+    });
+    area.innerHTML = html;
+    scrollToRankings();
+  }
+
+  function itemsToCandidates(items) {
+    return items
+      .filter(i => i.status === 'ok' && i.resume_id)
+      .map(i => ({
+        resume_id: String(i.resume_id),
+        candidate_name: i.candidate_name,
+        current_title: i.current_title,
+        ats_score: i.ats_score,
+        matched_skills: i.matched_skills || [],
+        missing_skills: i.missing_skills || [],
+        reason_to_select: i.reason_to_select || '',
+        source: 'direct',
+      }));
+  }
+
+  function uploadOkToCandidates(items, topK) {
+    return applyTopKRanked(itemsToCandidates(items), topK);
+  }
+
+  async function enrichRankings(candidates) {
+    if (!selectedJdId || !candidates.length) return candidates;
+    const fd = new FormData();
+    fd.append('jd_id', selectedJdId);
+    fd.append('candidates_json', JSON.stringify(candidates.map(c => ({
+      resume_id: c.resume_id,
+      ats_score: c.ats_score,
+      candidate_name: c.candidate_name,
+      current_title: c.current_title,
+      rank: c.rank,
+      source: c.source,
+    }))));
+    const res = await fetch(`${API}/match/enrich-rankings`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: fd,
+    });
+    if (res.status === 401) { requireAuth(); return candidates; }
+    const data = await res.json();
+    if (res.status === 404) {
+      throw new Error('Server missing /match/enrich-rankings — restart RUN_HIRING_SERVER.bat (build hiring-openai-v17+)');
+    }
+    if (!res.ok) throw new Error(parseApiError(data) || 'Enrich failed');
+    return data.candidates || candidates;
+  }
+
+  async function scanRankings() {
+    if (!selectedJdId) {
+      alert('Please select a role first.');
+      return;
+    }
+    const topK = getTopK();
+    if (topK == null) return;
+    const area = document.getElementById('rankingsArea');
+    const scanBtn = document.getElementById('scanBtn');
+    scanBtn.disabled = true;
+    scanBtn.textContent = 'Scanning…';
+    area.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text-secondary);">
+      <div class="loading-dots"><span>·</span><span>·</span><span>·</span></div>
+      <div style="margin-top:10px;font-size:14px;">Scanning top ${topK} candidates…</div>
+    </div>`;
+
+    try {
+      const fd = new FormData();
+      fd.append('jd_id', selectedJdId);
+      fd.append('top_k', String(topK));
+      const res = await fetch(`${API}/match/scan-by-jd`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: fd,
+      });
+      if (res.status === 401) { requireAuth(); return; }
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data) || 'Scan failed');
+
+      let matches = data.matches || [];
+      if (!matches.length && lastUploadResults.length) {
+        matches = uploadOkToCandidates(lastUploadResults, topK);
+      }
+      const lacksInsights = matches.some(c =>
+        !(c.matched_skills && c.matched_skills.length) &&
+        !(c.missing_skills && c.missing_skills.length) &&
+        (!c.reason_to_select || c.reason_to_select.length < 80)
+      );
+      if (lacksInsights) {
+        area.innerHTML = `<div style="text-align:center;padding:32px;color:var(--text-secondary);">
+          <div class="loading-dots"><span>·</span><span>·</span><span>·</span></div>
+          <div style="margin-top:10px;font-size:14px;">Analyzing skills &amp; fit (may take 15–30s)…</div>
+        </div>`;
+        try {
+          matches = await enrichRankings(matches);
+        } catch (enrichErr) {
+          console.warn('Enrich rankings:', enrichErr);
+          alert(enrichErr.message || 'Could not load skill analysis. Restart RUN_HIRING_SERVER.bat (v17+) and Scan again.');
+        }
+      }
+      renderRankings(matches, topK);
+    } catch (e) {
+      showRankingsPrompt(e.message || 'Scan failed. Try again.');
+    } finally {
+      scanBtn.disabled = false;
+      scanBtn.textContent = 'Scan';
+    }
+  }
+
+  async function sendMailToSelected() {
+    if (!selectedJdId) {
+      alert('Select a role first.');
+      return;
+    }
+    const checked = Array.from(document.querySelectorAll('.cand-select:checked'));
+    const ids = checked.map(el => el.getAttribute('data-resume-id')).filter(Boolean);
+    if (!ids.length) {
+      alert('Select at least one candidate.');
+      return;
+    }
+    if (!confirm(`Send outreach email to ${ids.length} candidate(s)?`)) return;
+
+    const btn = document.getElementById('sendMailBtn');
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      const fd = new FormData();
+      fd.append('jd_id', selectedJdId);
+      ids.forEach(id => fd.append('candidate_ids', id));
+      const insights = rankedCandidates
+        .filter(c => ids.includes(String(c.resume_id)))
+        .map(c => ({
+          resume_id: c.resume_id,
+          matched_skills: c.matched_skills || [],
+          reason_to_select: c.reason_to_select || '',
+          current_title: c.current_title || '',
+        }));
+      if (insights.length) {
+        fd.append('insights_json', JSON.stringify(insights));
+      }
+      const res = await fetch(`${API}/send-emails`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(parseApiError(data) || 'Send failed');
+      const rows = data.results || data.items || [];
+      const ok = rows.filter(x => x.status === 'success' || x.status === 'sent' || x.status === 'ok');
+      const failed = rows.filter(x => x.status === 'error');
+      let msg = `Sent ${ok.length} of ${ids.length} email(s) from recruit@tekleaders.io.`;
+      if (failed.length) {
+        msg += '\n\nFailed:\n' + failed.map(f =>
+          `• ${f.candidate_name || f.resume_id}: ${f.message || 'unknown error'}`
+        ).join('\n');
+      }
+      alert(msg);
+    } catch (e) {
+      alert('Send mail failed: ' + e.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Send Mail';
+    }
+  }
+
+  // ── RESET HELPERS ──────────────────────────────────────────
+  function resetUploadSection() {
+    document.getElementById('uploadGate').style.display = 'block';
+    document.getElementById('uploadForm').style.display = 'none';
+    document.getElementById('uploadResults').innerHTML = '';
+    document.getElementById('uploadResults').classList.remove('show');
+    document.getElementById('fileCountBadge').classList.remove('show');
+    document.getElementById('uploadBtn').disabled = true;
+  }
+  function showRankingsPrompt(message) {
+    rankedCandidates = [];
+    document.getElementById('rankingsArea').innerHTML = `<div class="empty-state"><div class="empty-state-text">${escHtml(message)}</div></div>`;
+    document.getElementById('sendMailBtn').disabled = true;
+  }
+
+  function resetRankings() {
+    showRankingsPrompt('Select a client and role, then click Scan');
+    document.getElementById('scanBtn').disabled = true;
+  }
+
+  // ── DRAG DROP ──────────────────────────────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    const zone = document.getElementById('dropZone');
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragging'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragging'));
+    zone.addEventListener('drop', e => {
+      e.preventDefault(); zone.classList.remove('dragging');
+      const dt = e.dataTransfer;
+      if (dt.files.length) {
+        const input = document.getElementById('resumeFiles');
+        const kept = new DataTransfer();
+        Array.from(dt.files).filter(isResumeUploadFile).forEach(f => kept.items.add(f));
+        if (kept.files.length) {
+          input.files = kept.files;
+          onFilesSelect();
+        }
+      }
+    });
+  });
+
+  // ── PROGRESS ───────────────────────────────────────────────
+  let progressInterval;
+  function animateProgress() {
+    const wrap = document.getElementById('uploadProgress');
+    const bar = document.getElementById('progressBar');
+    wrap.classList.add('show'); let p = 0;
+    progressInterval = setInterval(() => { p = Math.min(p + Math.random()*6, 85); bar.style.width = p + '%'; }, 350);
+  }
+  function stopProgress(val) {
+    clearInterval(progressInterval);
+    const bar = document.getElementById('progressBar');
+    bar.style.width = val + '%';
+    if (val === 0) setTimeout(() => document.getElementById('uploadProgress').classList.remove('show'), 600);
+  }
+
+  function escHtml(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+</script>
+</body>
+</html>

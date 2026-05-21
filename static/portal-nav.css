@@ -1,0 +1,44 @@
+.portal-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 28px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.portal-nav a {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b5563;
+  text-decoration: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.portal-nav a:hover {
+  color: #c026d3;
+  background: #fdf4ff;
+}
+
+.portal-nav a.active {
+  color: #fff;
+  background: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+}
+
+.portal-nav .nav-spacer {
+  flex: 1;
+  min-width: 8px;
+}
+
+.portal-nav .nav-logout {
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.portal-nav .nav-logout:hover {
+  color: #dc2626;
+  background: #fef2f2;
+}

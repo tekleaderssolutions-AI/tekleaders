@@ -118,98 +118,107 @@ const app = {
     };
 
     // Admin: Resume Upload
-    document.getElementById('admin-upload-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const files = document.getElementById('resume-files').files;
-      const formData = new FormData();
-      for (let i = 0; i < files.length; i++) {
-        formData.append('files', files[i]);
-      }
-
-      const output = document.getElementById('admin-output');
-      output.innerHTML = 'Uploading...';
-
-      try {
-        const res = await fetch('/resumes/upload', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + localStorage.getItem('token')
-          },
-          body: formData
-        });
-        const data = await res.json();
-        output.innerHTML = `<div style="color: green">Successfully processed ${data.count} resumes.</div>`;
-      } catch (err) {
-        output.innerHTML = `<div style="color: red">Error: ${err.message}</div>`;
-      }
-    });
-    // Admin: Init DB
-    document.getElementById('init-db-btn').addEventListener('click', async () => {
-      const output = document.getElementById('init-output');
-      output.innerHTML = 'Initializing...';
-      try {
-        const res = await fetch('/init-db', { method: 'POST' });
-        const data = await res.json();
-        output.innerHTML = JSON.stringify(data);
-      } catch (err) {
-        output.innerHTML = `Error: ${err.message}`;
-      }
-    });
-
-    // Recruiter: JD Upload & Rank
-    document.getElementById('jd-upload-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const file = document.getElementById('jd-file').files[0];
-
-      // Get topK based on selection
-      const topKSelect = document.getElementById('top-k-select').value;
-      let topK;
-
-      if (topKSelect === 'all') {
-        topK = 1000; // Large number to get all results
-      } else {
-        topK = parseInt(document.getElementById('top-k-input').value) || 5;
-      }
-
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const output = document.getElementById('jd-output');
-      output.innerHTML = 'Uploading and analyzing JD...';
-
-      try {
-        const res = await fetch('/jd/analyze/pdf', {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer ' + localStorage.getItem('token')
-          },
-          body: formData
-        });
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
-
-        const detectedRole = data.role || 'Unknown';
-        output.innerHTML = `<div style="color: green">JD Analyzed! Role detected: <b>${detectedRole}</b></div>`;
-
-        // Store the database ID for embedding-based matching
-        const jdId = data.id;
-
-        if (!jdId) {
-          output.innerHTML += `<div style="color: red; margin-top: 5px;">Error: JD ID not returned from server. Please restart the backend server.</div>`;
-          console.error('JD upload response:', data);
-          return;
+    const adminForm = document.getElementById('admin-upload-form');
+    if (adminForm) {
+      adminForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const files = document.getElementById('resume-files').files;
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+          formData.append('files', files[i]);
         }
 
-        document.getElementById('jd-database-id').value = jdId;
+        const output = document.getElementById('admin-output');
+        output.innerHTML = 'Uploading...';
 
-        // Auto-fetch rankings using embedding similarity
-        output.innerHTML += `<div style="color: blue; margin-top: 5px;">Auto-fetching top ${topK} matches...</div>`;
-        await fetchRankings(jdId, topK);
+        try {
+          const res = await fetch('/resumes/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + localStorage.getItem('token')
+            },
+            body: formData
+          });
+          const data = await res.json();
+          output.innerHTML = `<div style="color: green">Successfully processed ${data.count} resumes.</div>`;
+        } catch (err) {
+          output.innerHTML = `<div style="color: red">Error: ${err.message}</div>`;
+        }
+      });
+    }
+    // Admin: Init DB
+    const initBtn = document.getElementById('init-db-btn');
+    if (initBtn) {
+      initBtn.addEventListener('click', async () => {
+        const output = document.getElementById('init-output');
+        output.innerHTML = 'Initializing...';
+        try {
+          const res = await fetch('/init-db', { method: 'POST' });
+          const data = await res.json();
+          output.innerHTML = JSON.stringify(data);
+        } catch (err) {
+          output.innerHTML = `Error: ${err.message}`;
+        }
+      });
+    }
 
-      } catch (err) {
-        output.innerHTML = `<div style="color: red">Error: ${err.message}</div>`;
-      }
-    });
+    // Recruiter: JD Upload & Rank
+    const jdForm = document.getElementById('jd-upload-form');
+    if (jdForm) {
+      jdForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const file = document.getElementById('jd-file').files[0];
+
+        // Get topK based on selection
+        const topKSelect = document.getElementById('top-k-select').value;
+        let topK;
+
+        if (topKSelect === 'all') {
+          topK = 1000; // Large number to get all results
+        } else {
+          topK = parseInt(document.getElementById('top-k-input').value) || 5;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const output = document.getElementById('jd-output');
+        output.innerHTML = 'Uploading and analyzing JD...';
+
+        try {
+          const res = await fetch('/jd/analyze/pdf', {
+            method: 'POST',
+            headers: {
+              'Authorization': 'Bearer ' + localStorage.getItem('token')
+            },
+            body: formData
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+
+          const detectedRole = data.role || 'Unknown';
+          output.innerHTML = `<div style="color: green">JD Analyzed! Role detected: <b>${detectedRole}</b></div>`;
+
+          // Store the database ID for embedding-based matching
+          const jdId = data.id;
+
+          if (!jdId) {
+            output.innerHTML += `<div style="color: red; margin-top: 5px;">Error: JD ID not returned from server. Please restart the backend server.</div>`;
+            console.error('JD upload response:', data);
+            return;
+          }
+
+          document.getElementById('jd-database-id').value = jdId;
+
+          // Auto-fetch rankings using embedding similarity
+          output.innerHTML += `<div style="color: blue; margin-top: 5px;">Auto-fetching top ${topK} matches...</div>`;
+          await fetchRankings(jdId, topK);
+
+        } catch (err) {
+          output.innerHTML = `<div style="color: red">Error: ${err.message}</div>`;
+        }
+      });
+    }
   }
 };
 

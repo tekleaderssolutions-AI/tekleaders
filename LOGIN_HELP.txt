@@ -1,0 +1,31 @@
+LOGIN PAGE NOT SHOWING? Follow these steps exactly:
+===============================================
+
+1. STOP all Python/Uvicorn windows (close every terminal running the app).
+
+2. Double-click this file in the hiring folder:
+   START_SERVER.bat
+
+3. Wait until you see in the black window:
+   "HIRING APP — starting from:"
+   "Auth UI loaded from"
+   "Uvicorn running on http://127.0.0.1:8000"
+
+4. Open ONE of these URLs in Chrome/Edge:
+
+   http://127.0.0.1:8000/login
+   http://127.0.0.1:8000/static/login.html   (always works if server is running)
+
+5. Check the server is the NEW version:
+   http://127.0.0.1:8000/api/health
+   Must show: "app": "hiring-main" (NOT "detail":"Not Found")
+
+   Do NOT use: python manage.py runserver  (that is Django — wrong app)
+   USE: RUN_HIRING_SERVER.bat  or  python launch.py
+   Must show: "signup": "v2"
+   If you see 404 here, the wrong server is still running.
+
+6. Do NOT open HTML files directly from File Explorer (file://).
+   Do NOT use Live Server on port 5500.
+
+If port 8000 is stuck, open Task Manager → end all python.exe → run START_SERVER.bat again.

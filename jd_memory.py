@@ -1,21 +1,31 @@
 # memory_store.py
+import os
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List
 
-import google.generativeai as genai
+from dotenv import load_dotenv
 from psycopg2.extras import Json
 
-from config import EMBEDDING_MODEL, GEMINI_API_KEY
+from config import EMBEDDING_DIM
 from db import db_cursor
 
-# Configure Gemini API
-genai.configure(api_key=GEMINI_API_KEY)
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
 
 
-def _ensure_key():
-    if not GEMINI_API_KEY:
-        raise RuntimeError("GEMINI_API_KEY is not set")
+def _reload_env() -> None:
+    load_dotenv(_ENV_PATH, override=True)
+
+
+def _openai_api_key() -> str:
+    _reload_env()
+    return (os.environ.get("OPENAI_API_KEY") or "").strip()
+
+
+def _openai_embedding_model() -> str:
+    _reload_env()
+    return os.environ.get("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 def build_embedding_text(structured_jd: Dict[str, Any], summary: str | None = None) -> str:
@@ -40,17 +50,21 @@ def build_embedding_text(structured_jd: Dict[str, Any], summary: str | None = No
 
 
 def get_embedding_vector(text: str) -> List[float]:
-    """Generate embedding using Gemini's embedding API."""
-    _ensure_key()
-    
-    # Use Gemini's embedding model
-    result = genai.embed_content(
-        model=f"models/{EMBEDDING_MODEL}",
-        content=text,
-        task_type="retrieval_document"
-    )
-    
-    return result["embedding"]
+    """Generate JD embedding via OpenAI (never Gemini)."""
+    api_key = _openai_api_key()
+    if not api_key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is missing for JD embeddings. Add it to hiring/.env and restart."
+        )
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key)
+    model = _openai_embedding_model()
+    kwargs = {"input": [text], "model": model}
+    if model.startswith("text-embedding-3"):
+        kwargs["dimensions"] = EMBEDDING_DIM
+    response = client.embeddings.create(**kwargs)
+    return response.data[0].embedding
 
 
 def embedding_to_literal(vec: List[float]) -> str:
@@ -103,8 +117,9 @@ def create_memory(
     created_by: str = "system",
     pii_flag: bool = False,
     user_id: str | None = None,
+    client_id: str | None = None,
 ) -> Dict[str, Any]:
-    
+
     memory_uuid = str(uuid.uuid4())
 
     now_iso = datetime.now(timezone.utc).isoformat()
@@ -120,9 +135,7 @@ def create_memory(
     exp = structured_jd.get("experience") or {}
     salary = structured_jd.get("salary") or {}
 
-    # Generate a sequential short ID (tek0001, tek0002, etc.)
     with db_cursor() as cur:
-        # Get the highest sequential number from existing JD short_ids
         cur.execute(
             """
             SELECT short_id FROM memories 
@@ -132,26 +145,23 @@ def create_memory(
             """
         )
         row = cur.fetchone()
-        
+
         if row and row[0]:
-            # Extract number from last short_id (e.g., 'tek0001' -> 1)
             last_id = row[0]
             try:
-                last_num = int(last_id.replace('tek', ''))
+                last_num = int(last_id.replace("tek", ""))
                 next_num = last_num + 1
             except ValueError:
-                # If parsing fails, start from 1
                 next_num = 1
         else:
-            # No existing JDs, start from 1
             next_num = 1
-        
-        # Format as tek0001, tek0002, etc. (4 digits with leading zeros)
+
         short_id = f"tek{next_num:04d}"
 
-
+    embed_model = _openai_embedding_model()
     metadata: Dict[str, Any] = {
         "job_id": job_id,
+        "client_id": client_id,
         "location": structured_jd.get("location"),
         "employment_type": structured_jd.get("employment_type"),
         "experience_min": exp.get("min"),
@@ -166,7 +176,7 @@ def create_memory(
         "source_url": source_url,
         "pii_flag": pii_flag,
         "raw_text_snippet": raw_text_snippet,
-        "embedding_model": EMBEDDING_MODEL,
+        "embedding_model": embed_model,
         "chunk_index": 0,
         "short_id": short_id,
     }
@@ -176,11 +186,12 @@ def create_memory(
     with db_cursor() as cur:
         cur.execute(
             """
-            INSERT INTO memories (id, type, title, text, embedding, metadata, canonical_json, short_id, created_at, updated_at, user_id)
-            VALUES (%s, %s, %s, %s, %s::vector, %s, %s, %s, NOW(), NOW(), %s)
+            INSERT INTO memories (id, client_id, type, title, text, embedding, metadata, canonical_json, short_id, created_at, updated_at, user_id)
+            VALUES (%s, %s, %s, %s, %s, %s::vector, %s, %s, %s, NOW(), NOW(), %s)
             """,
             (
                 memory_uuid,
+                client_id,
                 "job",
                 title,
                 embed_text,
@@ -188,8 +199,8 @@ def create_memory(
                 Json(metadata),
                 Json(canonical_json),
                 short_id,
-                user_id
-            )
+                user_id,
+            ),
         )
 
     return {
@@ -201,7 +212,7 @@ def create_memory(
         "raw_text_snippet": raw_text_snippet,
         "metadata": metadata,
         "canonical_json": canonical_json,
-        "embedding_model": EMBEDDING_MODEL,
+        "embedding_model": embed_model,
         "embedding": embedding,
         "chunk_index": 0,
         "source_url": source_url,

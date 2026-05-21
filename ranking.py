@@ -68,9 +68,11 @@ def get_top_k_resumes_for_jd_memory(jd_memory_id: str, top_k: int = 3) -> List[D
                 r.candidate_name,
                 r.title,
                 r.metadata->>'file_name' AS file_name,
+                r.email,
                 1 - (r.embedding <=> (SELECT v FROM jd)) AS similarity
             FROM resumes r
-            WHERE r.type = 'resume'
+            WHERE r.embedding IS NOT NULL
+              AND (r.type = 'resume' OR r.type IS NULL)
             ORDER BY r.embedding <=> (SELECT v FROM jd)
             LIMIT %s;
             """,
@@ -82,20 +84,101 @@ def get_top_k_resumes_for_jd_memory(jd_memory_id: str, top_k: int = 3) -> List[D
         conn.close()
 
     results: List[Dict[str, Any]] = []
-    for rank, (resume_id, name, title, file_name, similarity) in enumerate(rows, start=1):
+    for rank, (resume_id, name, title, file_name, email, similarity) in enumerate(rows, start=1):
         ats_score = int(max(0.0, min(1.0, similarity)) * 100)
         results.append(
             {
-                "resume_id": resume_id,
+                "resume_id": str(resume_id),
                 "candidate_name": name,
                 "current_title": title,
                 "file_name": file_name,
+                "candidate_email": email,
                 "similarity": float(similarity),
                 "ats_score": ats_score,
                 "rank": rank,
             }
         )
     return results
+
+
+def get_direct_outreach_for_jd(jd_memory_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+    """Resumes uploaded for this JD (metadata linked_jd_id), not email outreach rows."""
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                r.id,
+                r.candidate_name,
+                r.email,
+                (r.metadata->>'ats_score')::int,
+                r.title,
+                r.metadata->>'file_name' AS file_name
+            FROM resumes r
+            WHERE r.metadata->>'linked_jd_id' = %s
+            ORDER BY (r.metadata->>'ats_score')::int DESC NULLS LAST, r.created_at DESC
+            LIMIT %s
+            """,
+            [jd_memory_id, limit],
+        )
+        rows = cur.fetchall()
+        cur.close()
+    finally:
+        conn.close()
+
+    results: List[Dict[str, Any]] = []
+    for idx, (resume_id, name, email, ats_score, title, file_name) in enumerate(rows, start=1):
+        results.append(
+            {
+                "resume_id": str(resume_id),
+                "candidate_name": name,
+                "current_title": title,
+                "file_name": file_name,
+                "candidate_email": email,
+                "ats_score": ats_score,
+                "rank": idx,
+                "source": "direct",
+            }
+        )
+    return results
+
+
+def _score_sort_key(match: Dict[str, Any]) -> float:
+    score = match.get("ats_score")
+    if score is None:
+        return -1.0
+    try:
+        return float(score)
+    except (TypeError, ValueError):
+        return -1.0
+
+
+def get_scan_matches_for_jd_memory(jd_memory_id: str, top_k: int = 5) -> List[Dict[str, Any]]:
+    """
+    Merge direct applicants + global embedding matches, sort by ATS score (high → low), return top-K.
+    """
+    top_k = max(1, min(int(top_k), 50))
+    direct = get_direct_outreach_for_jd(jd_memory_id, limit=100)
+    seen = {m["resume_id"] for m in direct}
+    pool: List[Dict[str, Any]] = list(direct)
+
+    try:
+        global_matches = get_top_k_resumes_for_jd_memory(jd_memory_id, top_k=50)
+    except (ValueError, Exception):
+        global_matches = []
+
+    for m in global_matches:
+        rid = str(m["resume_id"])
+        if rid not in seen:
+            pool.append({**m, "resume_id": rid, "source": "global"})
+            seen.add(rid)
+
+    pool.sort(key=_score_sort_key, reverse=True)
+    top = pool[:top_k]
+    for i, m in enumerate(top, start=1):
+        m["rank"] = i
+    return top
 
 
 def get_top_k_resumes_for_role(role_name: str, top_k: int = 3) -> List[Dict[str, Any]]:

@@ -1,29 +1,43 @@
 # main.py
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env before any config-dependent imports (override stale shell env)
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from typing import Optional, List, Dict, Any
 import pdfplumber
 from io import BytesIO
 
-from jd_agent import analyze_job_description
 from ranker_agent import get_top_matches_for_role
 from resume_agent import process_resume_text
+from resume_text_extractor import (
+    expand_upload,
+    extract_resume_text,
+    is_supported_upload_filename,
+)
 import html
 
 
 # --- Authentication Logic ---
-import os
 from datetime import datetime, timedelta
 from fastapi.security import OAuth2PasswordBearer
 from fastapi import status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError, field_validator, model_validator
 from passlib.context import CryptContext
 
 # Password Hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+DEFAULT_TENANT_ID = "23cd7026-c85b-4f38-ad2d-bcd09cbc487c"
+USER_LOGIN_WHERE = "username = %s OR email = %s"
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -53,7 +67,10 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
         from db import get_connection
         conn = get_connection()
         cur = conn.cursor()
-        cur.execute("SELECT id, username, password_hash FROM users WHERE username = %s", (username,))
+        cur.execute(
+            f"SELECT id, COALESCE(username, email), password_hash FROM users WHERE {USER_LOGIN_WHERE}",
+            (username, username),
+        )
         user_row = cur.fetchone()
         conn.close()
         
@@ -82,6 +99,8 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
+SERVER_BUILD = "hiring-openai-v20"
+RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
     CORSMiddleware,
@@ -90,6 +109,131 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_STATIC_DIR = os.path.join(_BASE_DIR, "static")
+
+_AUTH_HTML_PAGES = {
+    "/login": "login.html",
+    "/auth/login": "login.html",
+    "/sign-in": "login.html",
+    "/signup": "signup.html",
+    "/auth/signup": "signup.html",
+    "/sign-up": "signup.html",
+}
+
+_PROTECTED_APP_PAGES = {"/", "/admin", "/recruiter", "/hr", "/interviews/status"}
+
+
+def _resolve_user_from_token(token: str) -> Optional[dict]:
+    """Return user dict if token is valid; any logged-in user has full app access."""
+    if not token:
+        return None
+    admin_username = os.getenv("ADMIN_USERNAME", "hiring")
+    if token == admin_username:
+        return {"id": "admin", "username": admin_username}
+    try:
+        from db import get_connection
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            f"SELECT id, COALESCE(username, email) FROM users WHERE {USER_LOGIN_WHERE}",
+            (token, token),
+        )
+        user_row = cur.fetchone()
+        conn.close()
+        if user_row:
+            return {"id": str(user_row[0]), "username": user_row[1]}
+    except Exception as e:
+        print(f"Error validating token: {e}")
+    return None
+
+
+def _token_from_request(request: Request) -> Optional[str]:
+    auth = request.headers.get("Authorization") or ""
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip() or None
+    return request.cookies.get("access_token")
+
+
+class PortalAuthMiddleware(BaseHTTPMiddleware):
+    """Require login for main app pages; no role-based restrictions."""
+
+    async def dispatch(self, request, call_next):
+        if request.method == "GET":
+            path = request.url.path.rstrip("/") or "/"
+            if path in _PROTECTED_APP_PAGES and path not in _AUTH_HTML_PAGES:
+                if _resolve_user_from_token(_token_from_request(request) or "") is None:
+                    return RedirectResponse(url="/login", status_code=302)
+        return await call_next(request)
+
+
+class AuthPagesMiddleware(BaseHTTPMiddleware):
+    """Serve login/signup HTML before the router (works even if route table is stale)."""
+
+    async def dispatch(self, request, call_next):
+        if request.method == "GET":
+            path = request.url.path.rstrip("/") or "/"
+            filename = _AUTH_HTML_PAGES.get(path)
+            if filename:
+                filepath = os.path.join(_STATIC_DIR, filename)
+                if os.path.isfile(filepath):
+                    with open(filepath, encoding="utf-8") as fh:
+                        return HTMLResponse(
+                            fh.read(),
+                            headers={"X-Hiring-App": "hiring-main", "X-Auth-Page": path},
+                        )
+                return HTMLResponse(
+                    f"<h1>Missing {filename}</h1><p>Expected: {filepath}</p>"
+                    f"<p><a href='/static/{filename}'>Try /static/{filename}</a></p>",
+                    status_code=500,
+                )
+        return await call_next(request)
+
+
+app.add_middleware(PortalAuthMiddleware)
+app.add_middleware(AuthPagesMiddleware)
+
+
+def _read_auth_html(filename: str) -> HTMLResponse:
+    filepath = os.path.join(_STATIC_DIR, filename)
+    with open(filepath, encoding="utf-8") as fh:
+        return HTMLResponse(fh.read(), headers={"X-Hiring-Auth": filename})
+
+
+@app.get("/whoami")
+async def whoami():
+    return {
+        "app": "hiring-main",
+        "server_build": SERVER_BUILD,
+        "health": "/api/health",
+        "jd_upload": "/api/v1/jd/analyze-pdf",
+    }
+
+
+@app.get("/api/health")
+@app.get("/health")
+async def api_health():
+    from config import effective_resume_ai_provider
+
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+    key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    return {
+        "status": "ok",
+        "app": "hiring-main",
+        "server_build": SERVER_BUILD,
+        "signup": "v2",
+        "jd_ai_provider": "openai",
+        "jd_service_version": "jd-openai-v4",
+        "jd_chat_model": os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
+        "openai_configured": bool(key),
+        "resume_upload_version": RESUME_UPLOAD_VERSION,
+        "resume_formats": ["pdf", "doc", "docx", "zip"],
+        "resume_ai_provider": "openai",
+        "resume_parser": "resume-openai-v1",
+        "pages": ["/login", "/signup", "/auth/login", "/auth/signup"],
+        "api": ["/api/register", "/api/login", "/login", "/signup"],
+    }
 
 
 # Start the feedback scheduler when the application starts
@@ -109,6 +253,16 @@ async def startup_event():
     from feedback_scheduler import start_feedback_scheduler
     start_feedback_scheduler()
     print("[STARTUP] Feedback scheduler started")
+    print("[STARTUP] Auth signup v2 ready (email + confirm_password) at POST /api/register")
+    try:
+        from config import effective_jd_ai_provider, OPENAI_CHAT_MODEL, OPENAI_API_KEY
+
+        provider = effective_jd_ai_provider()
+        print(f"[STARTUP] JD upload AI: {provider}" + (
+            f" (model={OPENAI_CHAT_MODEL})" if provider == "openai" and OPENAI_API_KEY else ""
+        ))
+    except Exception as e:
+        print(f"[STARTUP] JD AI config check failed: {e}")
 
 
 # Serve the minimal UI from ./static
@@ -118,6 +272,30 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 @app.get("/")
 def read_index():
     return FileResponse("static/index.html")
+
+
+@app.get("/admin")
+async def get_admin_portal():
+    return FileResponse("static/admin_portal_view.html")
+
+
+@app.get("/recruiter")
+async def get_recruiter_portal():
+    return FileResponse(
+        "static/recruiter_portal_view.html",
+        headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
+    )
+
+
+@app.get("/hr")
+async def get_hr_dashboard():
+    return FileResponse("static/hr_dashboard_view.html")
+
+
+@app.get("/interviews/status")
+async def get_interviews_status_page():
+    """HR dashboard (same access for every logged-in user)."""
+    return FileResponse("static/hr_dashboard_view.html")
 
 
 @app.post("/init-db")
@@ -139,7 +317,9 @@ def init_db_endpoint():
 def debug():
     import os
     return {
-        "OPENROUTER_API_KEY_present": bool(os.environ.get("OPENROUTER_API_KEY")),
+        "JD_AI_PROVIDER": os.environ.get("JD_AI_PROVIDER", "openai"),
+        "OPENAI_API_KEY_present": bool(os.environ.get("OPENAI_API_KEY")),
+        "OPENAI_CHAT_MODEL": os.environ.get("OPENAI_CHAT_MODEL", "gpt-4o-mini"),
         "CHAT_MODEL": os.environ.get("CHAT_MODEL"),
         "EMBEDDING_MODEL": os.environ.get("EMBEDDING_MODEL"),
     }
@@ -157,36 +337,10 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
-    """
-    Validate the token (username) and return the user object.
-    For this simple implementation, the token IS the username.
-    In a real app, you would decode a JWT here.
-    """
-    # 1. Check if it's the admin
-    admin_username = os.getenv("ADMIN_USERNAME", "hiring")
-    if token == admin_username:
-         return {
-            "id": "admin", 
-            "username": admin_username
-        }
-
-    # 2. Check DB for user
-    try:
-        from db import get_connection
-        conn = get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT id, username FROM users WHERE username = %s", (token,))
-        user_row = cur.fetchone()
-        conn.close()
-        
-        if user_row:
-             return {
-                "id": str(user_row[0]),
-                "username": user_row[1]
-            }
-    except Exception as e:
-        print(f"Error validating token: {e}")
-        
+    """Validate token; all authenticated users can use every feature."""
+    user = _resolve_user_from_token(token)
+    if user:
+        return user
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -194,42 +348,122 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
 
 
-class UserSignup(BaseModel):
-    username: str
+class AgencySignupRequest(BaseModel):
+    email: str
+    password: str
+    confirm_password: str
+
+    @field_validator("email")
+    @classmethod
+    def email_not_empty(cls, email: str):
+        email = (email or "").strip()
+        if not email or "@" not in email:
+            raise ValueError("A valid email address is required")
+        return email.lower()
+
+    @field_validator("password")
+    @classmethod
+    def password_min_length(cls, password: str):
+        if len(password) < 6:
+            raise ValueError("Password must be at least 6 characters")
+        return password
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.password != self.confirm_password:
+            raise ValueError("Passwords do not match")
+        return self
+
+
+class AgencyLoginRequest(BaseModel):
+    email: str
     password: str
 
-@app.post("/signup")
-async def signup(user: UserSignup):
-    """Register a new user."""
+    @field_validator("email")
+    @classmethod
+    def email_not_empty(cls, email: str):
+        return (email or "").strip().lower()
+
+
+def _register_user(payload: AgencySignupRequest) -> dict:
+    """Shared signup logic: email + password with confirmation."""
     from db import get_connection
-    import psycopg2
-    
-    if not user.username or not user.password:
-        raise HTTPException(status_code=400, detail="Username and password are required")
-        
-    hashed_password = get_password_hash(user.password)
-    
+    import uuid
+
+    email = str(payload.email).strip().lower()
+    hashed_password = get_password_hash(payload.password)
+
     conn = get_connection()
     try:
         cur = conn.cursor()
-        # Check if user exists
-        cur.execute("SELECT 1 FROM users WHERE username = %s", (user.username,))
+        cur.execute(f"SELECT 1 FROM users WHERE {USER_LOGIN_WHERE}", (email, email))
         if cur.fetchone():
-             return JSONResponse({"success": False, "error": "Username already exists"}, status_code=400)
-             
-        # Insert new user with default role
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+        user_id = str(uuid.uuid4())
         cur.execute(
-            "INSERT INTO users (username, password_hash, role) VALUES (%s, %s, 'recruiter') RETURNING id",
-            (user.username, hashed_password)
+            """
+            INSERT INTO users (id, username, email, password_hash, role, tenant_id)
+            VALUES (%s, %s, %s, %s, 'user', %s)
+            RETURNING id
+            """,
+            (user_id, email, email, hashed_password, DEFAULT_TENANT_ID),
         )
         conn.commit()
-        return {"success": True, "message": "User created successfully"}
-        
+        return {"success": True, "message": "User created successfully", "user_id": user_id}
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
-        return JSONResponse({"success": False, "error": str(e)}, status_code=500)
+        print(f"[SIGNUP] Error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create account. Please try again.",
+        )
     finally:
         conn.close()
+
+
+@app.post("/api/register")
+@app.post("/signup")
+@app.post("/api/v1/agency/auth/signup")
+async def signup(request: Request):
+    """Register a new user with email and password confirmation."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Invalid request body")
+
+    try:
+        payload = AgencySignupRequest(
+            email=body.get("email") or body.get("username") or "",
+            password=body.get("password") or "",
+            confirm_password=body.get("confirm_password") or body.get("confirmPassword") or "",
+        )
+    except ValidationError as exc:
+        messages = []
+        for err in exc.errors():
+            field = err.get("loc", ["field"])[-1]
+            messages.append(f"{field}: {err.get('msg', 'invalid')}")
+        raise HTTPException(status_code=400, detail="; ".join(messages) or "Invalid signup data")
+
+    return _register_user(payload)
+
+
+@app.post("/api/login")
+@app.post("/login")
+@app.post("/api/v1/agency/auth/login")
+async def login_json(payload: AgencyLoginRequest):
+    """Login with email and password; returns access token."""
+    email = str(payload.email).strip().lower()
+    user = authenticate_user(email, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    return {"access_token": user["username"], "token_type": "bearer"}
 
 
 @app.get("/feedback-responses-link")
@@ -988,7 +1222,136 @@ async def sync_feedback_csv(file: UploadFile = File(...)):
         }
 
 
- 
+class ClientCreate(BaseModel):
+    name: str
+    industry: Optional[str] = None
+
+
+@app.get("/clients")
+@app.get("/api/v1/agency/clients")
+async def list_clients(current_user: dict = Depends(get_current_user)):
+    from db import db_cursor
+    try:
+        with db_cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, name, industry, created_at
+                FROM clients
+                ORDER BY name ASC
+                """
+            )
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "name": row[1],
+                    "industry": row[2],
+                    "created_at": row[3].isoformat() if row[3] else None
+                } for row in rows
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing clients: {e}")
+
+
+@app.post("/clients")
+@app.post("/api/v1/agency/clients")
+async def create_client(
+    request: Request,
+    current_user: dict = Depends(get_current_user)
+):
+    content_type = request.headers.get("content-type", "")
+    c_name = None
+    c_industry = None
+    
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            c_name = body.get("name")
+            c_industry = body.get("industry")
+        except Exception:
+            pass
+    else:
+        try:
+            form = await request.form()
+            c_name = form.get("name")
+            c_industry = form.get("industry")
+        except Exception:
+            pass
+            
+    if not c_name or not c_name.strip():
+        raise HTTPException(status_code=400, detail="Client name is required")
+        
+    import uuid
+    from db import db_cursor
+    client_id = str(uuid.uuid4())
+    default_tenant_id = '23cd7026-c85b-4f38-ad2d-bcd09cbc487c'
+    
+    try:
+        with db_cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO clients (id, tenant_id, name, industry)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (name) DO UPDATE 
+                SET industry = EXCLUDED.industry, updated_at = NOW()
+                RETURNING id, name, industry
+                """,
+                (client_id, default_tenant_id, c_name.strip(), c_industry.strip() if c_industry else None)
+            )
+            row = cur.fetchone()
+            return {
+                "id": row[0],
+                "name": row[1],
+                "industry": row[2]
+            }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {e}")
+
+
+@app.get("/jds")
+@app.get("/api/v1/recruitment/jobs")
+async def list_jds(
+    client_id: Optional[str] = None,
+    current_user: dict = Depends(get_current_user)
+):
+    from db import db_cursor
+    try:
+        with db_cursor() as cur:
+            if client_id:
+                cur.execute(
+                    """
+                    SELECT id, client_id, title, metadata, canonical_json, short_id, created_at
+                    FROM memories
+                    WHERE type = 'job' AND client_id = %s
+                    ORDER BY created_at DESC
+                    """,
+                    [client_id]
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT id, client_id, title, metadata, canonical_json, short_id, created_at
+                    FROM memories
+                    WHERE type = 'job'
+                    ORDER BY created_at DESC
+                    """
+                )
+            rows = cur.fetchall()
+            return [
+                {
+                    "id": row[0],
+                    "client_id": row[1],
+                    "title": row[2],
+                    "metadata": row[3],
+                    "canonical_json": row[4],
+                    "short_id": row[5],
+                    "created_at": row[6].isoformat() if row[6] else None
+                } for row in rows
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error listing JDs: {e}")
+
+
 def _extract_pdf_text(contents: bytes) -> str:
     with pdfplumber.open(BytesIO(contents)) as pdf:
         return "\n".join([page.extract_text() or "" for page in pdf.pages])
@@ -996,78 +1359,167 @@ def _extract_pdf_text(contents: bytes) -> str:
 
  
  
-@app.post("/jd/analyze/pdf")
-async def analyze_jd_pdf(
-    job_id: Optional[str] = Form(default=None),
-    source_url: Optional[str] = Form(default=None),
-    file: UploadFile = File(...),   # required PDF
-    current_user: dict = Depends(get_current_user)
-):
-    """
-    Analyze JD from uploaded PDF file.
-    """
+async def _analyze_jd_pdf_openai_v5(
+    *,
+    file: UploadFile,
+    job_id: Optional[str],
+    client_id: Optional[str],
+    source_url: Optional[str],
+    current_user: dict,
+) -> JSONResponse:
+    """JD upload — OpenAI only (SERVER_BUILD v5)."""
     if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported")
- 
-    try:
-        contents = await file.read()
-        if not contents:
-            raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
- 
-        raw_jd_text = _extract_pdf_text(contents)
- 
-        if not raw_jd_text.strip():
-            raise HTTPException(status_code=400, detail="JD text is empty after PDF extraction")
- 
-        # Extract user_id
-        user_id_val = current_user['id'] if current_user['id'] != 'admin' else None
 
-        memory_json = analyze_job_description(
+    load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
+    if not (os.environ.get("OPENAI_API_KEY") or "").strip():
+        raise HTTPException(
+            status_code=500,
+            detail="OPENAI_API_KEY missing in hiring/.env — add key and restart RUN_HIRING_SERVER.bat",
+        )
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
+
+    raw_jd_text = _extract_pdf_text(contents)
+    if not raw_jd_text.strip():
+        raise HTTPException(status_code=400, detail="JD text is empty after PDF extraction")
+
+    user_id_val = current_user["id"] if current_user["id"] != "admin" else None
+    target_client_id = (
+        client_id if (client_id and client_id.strip()) else "60e80ea2-ae7f-46d6-b30d-f73293036729"
+    )
+
+    import importlib.util
+
+    service_path = Path(__file__).resolve().parent / "jd_openai_service.py"
+    spec = importlib.util.spec_from_file_location("jd_openai_service_v5", service_path)
+    if spec is None or spec.loader is None:
+        raise HTTPException(status_code=500, detail=f"Cannot load {service_path}")
+    jd_mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(jd_mod)
+
+    try:
+        memory_json = jd_mod.process_jd_upload(
             raw_jd_text=raw_jd_text,
             job_id=job_id,
             source_url=source_url,
             created_by="jd_analyzer_agent_pdf",
             user_id=user_id_val,
+            client_id=target_client_id,
         )
-        
-        # Add the database ID to the response for embedding-based matching
-        # The memory_json already contains 'id' from jd_memory.create_memory
-        
+    except Exception as e:
+        err = str(e)
+        if "gemini" in err.lower() or "generativelanguage" in err.lower():
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    f"Wrong/old server on port 8000 (Gemini). Stop all Python, run RUN_HIRING_SERVER.bat. "
+                    f"Expected server_build={SERVER_BUILD}. {err[:300]}"
+                ),
+            )
+        raise HTTPException(status_code=500, detail=f"[{SERVER_BUILD}] OpenAI JD error: {err}")
+
+    response = JSONResponse(content=memory_json)
+    response.headers["X-Server-Build"] = SERVER_BUILD
+    response.headers["X-JD-AI-Provider"] = "openai"
+    response.headers["X-JD-Service"] = memory_json.get("service_version", "jd-openai-v4")
+    response.headers["X-App"] = "hiring-main"
+    return response
+
+
+@app.post("/api/v1/jd/analyze-pdf")
+@app.post("/jd/analyze/pdf")
+async def analyze_jd_pdf(
+    job_id: Optional[str] = Form(default=None),
+    client_id: Optional[str] = Form(default=None),
+    source_url: Optional[str] = Form(default=None),
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    try:
+        return await _analyze_jd_pdf_openai_v5(
+            file=file,
+            job_id=job_id,
+            client_id=client_id,
+            source_url=source_url,
+            current_user=current_user,
+        )
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Internal error (pdf): {e}")
- 
-    return memory_json
- 
- 
+        err = str(e)
+        if "Internal error (pdf)" in err or "gemini" in err.lower():
+            raise HTTPException(
+                status_code=500,
+                detail=(
+                    "You are hitting an OLD server (Gemini / Internal error pdf). "
+                    "1) Task Manager → end all python.exe  2) Double-click RUN_HIRING_SERVER.bat "
+                    f"3) Open /api/health — must show server_build={SERVER_BUILD}"
+                ),
+            )
+        raise HTTPException(status_code=500, detail=f"[{SERVER_BUILD}] {err}")
+
+
+def _link_resume_to_jd(resume_id: str, jd_id: str) -> tuple:
+    """Score resume against JD and tag resume metadata for Scan (no outreach row)."""
+    from psycopg2.extras import Json
+    from db import db_cursor
+
+    ats_score = None
+    rank_val = None
+    with db_cursor() as cur:
+        cur.execute(
+            """
+            SELECT 1 - (r.embedding <=> m.embedding) AS similarity
+            FROM resumes r, memories m
+            WHERE r.id = %s AND m.id = %s
+            """,
+            [resume_id, jd_id],
+        )
+        row = cur.fetchone()
+        if not row:
+            return ats_score, rank_val
+        ats_score = int(max(0.0, min(1.0, float(row[0] or 0.0))) * 100)
+        cur.execute(
+            """
+            UPDATE resumes
+            SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+                updated_at = NOW()
+            WHERE id = %s
+            """,
+            [Json({"linked_jd_id": jd_id, "ats_score": ats_score}), resume_id],
+        )
+    return ats_score, rank_val
+
+
 @app.post("/resumes/upload")
 async def upload_resumes(
     files: List[UploadFile] = File(...),
+    jd_id: Optional[str] = Form(default=None),
     source_url: Optional[str] = Form(default=None),
     current_user: dict = Depends(get_current_user)
 ):
     """
-    Upload MULTIPLE resume PDFs.
-    For each:
-      - Extract text
-      - Parse with LLM
-      - Store resume + vector (linked to user)
-    Returns basic info for UI.
+    Upload resumes: PDF, Word (.doc/.docx), or ZIP (containing those formats).
+    Each file is parsed, stored, and optionally matched to jd_id.
     """
     if not files:
         raise HTTPException(status_code=400, detail="No files uploaded")
 
     results: List[Dict[str, Any]] = []
+    user_id_val = current_user["id"] if current_user["id"] != "admin" else None
+    jd_id_clean = jd_id.strip() if jd_id and jd_id.strip() else None
 
     for file in files:
-        filename = file.filename
+        filename = file.filename or "unknown"
 
-        if not filename.lower().endswith(".pdf"):
+        if not is_supported_upload_filename(filename):
             results.append({
                 "file_name": filename,
                 "status": "skipped",
-                "reason": "not a PDF",
+                "reason": "unsupported format (use PDF, Word .doc/.docx, or ZIP)",
             })
             continue
 
@@ -1081,35 +1533,73 @@ async def upload_resumes(
                 })
                 continue
 
-            # Extract text from PDF
-            raw_text = _extract_pdf_text(contents).strip()
-            if not raw_text:
+            try:
+                entries = expand_upload(filename, contents)
+            except ValueError as e:
                 results.append({
                     "file_name": filename,
                     "status": "error",
-                    "reason": "no text extracted",
+                    "reason": str(e),
                 })
                 continue
 
-            # Extract user_id
-            user_id_val = current_user['id'] if current_user['id'] != 'admin' else None
+            if not entries:
+                reason = (
+                    "ZIP contains no PDF or Word resumes"
+                    if filename.lower().endswith(".zip")
+                    else "no readable resume content"
+                )
+                results.append({
+                    "file_name": filename,
+                    "status": "skipped",
+                    "reason": reason,
+                })
+                continue
 
-            processed = process_resume_text(
-                raw_text=raw_text,
-                source_url=source_url,
-                file_name=filename,
-                user_id=user_id_val,
-            )
-            resume_id = processed["resume_id"]
-            parsed = processed["parsed"]
+            for entry_name, entry_bytes in entries:
+                try:
+                    raw_text = extract_resume_text(entry_name, entry_bytes).strip()
+                    if not raw_text:
+                        results.append({
+                            "file_name": entry_name,
+                            "status": "error",
+                            "reason": "no text extracted",
+                        })
+                        continue
 
-            results.append({
-                "file_name": filename,
-                "status": "ok",
-                "resume_id": resume_id,
-                "candidate_name": parsed.get("candidate_name"),
-                "current_title": parsed.get("current_title"),
-            })
+                    processed = process_resume_text(
+                        raw_text=raw_text,
+                        source_url=source_url,
+                        file_name=entry_name,
+                        user_id=user_id_val,
+                    )
+                    resume_id = processed["resume_id"]
+                    parsed = processed["parsed"]
+                    ats_score, rank_val = None, None
+                    if jd_id_clean:
+                        ats_score, rank_val = _link_resume_to_jd(resume_id, jd_id_clean)
+
+                    results.append({
+                        "file_name": entry_name,
+                        "status": "ok",
+                        "resume_id": resume_id,
+                        "candidate_name": parsed.get("candidate_name"),
+                        "current_title": parsed.get("current_title"),
+                        "ats_score": ats_score,
+                        "rank": rank_val,
+                    })
+                except Exception as e:
+                    err = str(e)
+                    if "429" in err or "quota" in err.lower() or "generativelanguage" in err:
+                        err = (
+                            "AI quota exceeded (Gemini). Set RESUME_AI_PROVIDER=openai in .env "
+                            "and restart RUN_HIRING_SERVER.bat."
+                        )
+                    results.append({
+                        "file_name": entry_name,
+                        "status": "error",
+                        "reason": err,
+                    })
 
         except Exception as e:
             results.append({
@@ -1118,10 +1608,39 @@ async def upload_resumes(
                 "reason": str(e),
             })
 
-    return {
-        "count": len(results),
-        "items": results,
-    }
+    if jd_id_clean:
+        try:
+            from match_insights import enrich_matches
+
+            ok_payload = [
+                {
+                    "resume_id": r["resume_id"],
+                    "ats_score": r.get("ats_score") or 0,
+                    "candidate_name": r.get("candidate_name"),
+                    "current_title": r.get("current_title"),
+                }
+                for r in results
+                if r.get("status") == "ok" and r.get("resume_id")
+            ]
+            if ok_payload:
+                enriched = enrich_matches(jd_id_clean, ok_payload)
+                by_id = {str(e["resume_id"]): e for e in enriched}
+                for r in results:
+                    if r.get("status") != "ok":
+                        continue
+                    ins = by_id.get(str(r.get("resume_id")))
+                    if ins:
+                        r["matched_skills"] = ins.get("matched_skills") or []
+                        r["missing_skills"] = ins.get("missing_skills") or []
+                        r["reason_to_select"] = ins.get("reason_to_select") or ""
+        except Exception:
+            pass
+
+    response = JSONResponse(content={"count": len(results), "items": results})
+    response.headers["X-Server-Build"] = SERVER_BUILD
+    response.headers["X-Resume-Upload-Version"] = RESUME_UPLOAD_VERSION
+    response.headers["X-Resume-Formats"] = "pdf,doc,docx,zip"
+    return response
 
 
 
@@ -1160,20 +1679,18 @@ async def get_top_matches_by_role(
 async def get_top_matches_by_jd_id(
     jd_id: str = Form(...),
     top_k: int = Form(3),
+    current_user: dict = Depends(get_current_user),
 ):
     """
-    Input from UI:
-      - jd_id: database UUID of the uploaded JD
-      - top_k (3, 5, or 10)
-
-    Backend:
-      - uses the JD's embedding directly from the database
-      - computes vector similarity with all resumes
-      - returns top-K resumes with ATS score + file_name + candidate_name.
+    Scan all resumes against JD embedding; return top-K with skill insights.
     """
     try:
-        from ranking import get_top_k_resumes_for_jd_memory
-        matches = get_top_k_resumes_for_jd_memory(jd_memory_id=jd_id, top_k=top_k)
+        from ranking import get_scan_matches_for_jd_memory
+        from match_insights import enrich_matches
+
+        top_k = max(1, min(int(top_k), 50))
+        matches = get_scan_matches_for_jd_memory(jd_memory_id=jd_id, top_k=top_k)
+        matches = enrich_matches(jd_id, matches)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal error (match/top-by-jd): {e}")
 
@@ -1181,13 +1698,117 @@ async def get_top_matches_by_jd_id(
         "jd_id": jd_id,
         "top_k": top_k,
         "matches": matches,
+        "source": "scan",
     }
+
+
+@app.post("/match/scan-by-jd")
+async def scan_matches_by_jd(
+    jd_id: str = Form(...),
+    top_k: int = Form(5),
+    current_user: dict = Depends(get_current_user),
+):
+    """Alias for scan button — top-K global resume match with reasoning."""
+    return await get_top_matches_by_jd_id(jd_id=jd_id, top_k=top_k, current_user=current_user)
+
+
+@app.post("/match/enrich-rankings")
+async def enrich_rankings(
+    jd_id: str = Form(...),
+    candidates_json: str = Form(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Fill matched_skills, missing_skills, and reason_to_select for ranking tiles.
+    Body: candidates_json = [{\"resume_id\": \"...\", \"ats_score\": 70, ...}, ...]
+    """
+    import json as _json
+    from match_insights import enrich_matches
+
+    try:
+        rows = _json.loads(candidates_json or "[]")
+        if not isinstance(rows, list):
+            raise ValueError("candidates_json must be a JSON array")
+    except (ValueError, _json.JSONDecodeError) as e:
+        raise HTTPException(status_code=400, detail=f"Invalid candidates_json: {e}")
+
+    payload = [r for r in rows if isinstance(r, dict) and r.get("resume_id")]
+    enriched = enrich_matches(jd_id, payload)
+    return {"jd_id": jd_id, "candidates": enriched, "count": len(enriched)}
+
+
+@app.get("/match/by-jd/{jd_id}")
+async def get_match_by_jd(
+    jd_id: str,
+    top_k: int = 50,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Direct applicants (candidate_outreach) for a JD, with skill insights.
+    """
+    try:
+        from db import db_cursor
+        from match_insights import enrich_match
+
+        with db_cursor() as cur:
+            cur.execute(
+                """
+                SELECT
+                    co.id AS outreach_id,
+                    co.resume_id,
+                    co.jd_id,
+                    co.candidate_name,
+                    co.candidate_email,
+                    co.ats_score,
+                    co.rank,
+                    co.sent_at,
+                    r.title AS current_title,
+                    r.metadata->>'file_name' AS file_name
+                FROM candidate_outreach co
+                JOIN resumes r ON co.resume_id = r.id
+                WHERE co.jd_id = %s
+                ORDER BY co.ats_score DESC NULLS LAST, co.sent_at DESC
+                LIMIT %s
+                """,
+                [jd_id, max(1, min(int(top_k), 100))],
+            )
+            rows = cur.fetchall()
+
+        results = []
+        for row in rows:
+            item = {
+                "outreach_id": row[0],
+                "resume_id": row[1],
+                "jd_id": row[2],
+                "candidate_name": row[3],
+                "candidate_email": row[4],
+                "ats_score": row[5],
+                "rank": row[6],
+                "sent_at": row[7].isoformat() if row[7] else None,
+                "current_title": row[8],
+                "file_name": row[9],
+                "source": "direct",
+            }
+            try:
+                item = enrich_match(jd_id, item)
+            except Exception:
+                pass
+            results.append(item)
+
+        return {
+            "applicants": results,
+            "source": "direct",
+            "count": len(results),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error matching by JD: {e}")
 
 
 @app.post("/send-emails")
 async def send_emails_to_candidates(
     jd_id: str = Form(...),
     candidate_ids: List[str] = Form(...),
+    insights_json: Optional[str] = Form(None),
 ):
     """
     Send personalized emails to selected candidates.
@@ -1202,8 +1823,18 @@ async def send_emails_to_candidates(
     from db import get_connection
     from mailing_agent import generate_personalized_email
     from email_sender import send_email
+    from config import SMTP_PASSWORD, SMTP_USER, FROM_EMAIL
     import uuid
-    
+
+    if not (SMTP_PASSWORD or "").strip():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "SMTP_PASSWORD is not set in .env. Add the app password for "
+                f"{SMTP_USER or FROM_EMAIL} (see EMAIL_SETUP.md), then restart the server."
+            ),
+        )
+
     results = []
     conn = get_connection()
     
@@ -1268,9 +1899,34 @@ async def send_emails_to_candidates(
                     "email": resume_row[2],
                     "canonical_json": resume_row[3],
                     "metadata": resume_row[4],
-                    "embedding": resume_row[5]
+                    "embedding": resume_row[5],
                 }
-                
+                scan_row = insights_by_resume.get(str(resume_id))
+                if scan_row:
+                    candidate_data["matched_skills"] = scan_row.get("matched_skills") or []
+                    candidate_data["reason_to_select"] = scan_row.get("reason_to_select") or ""
+                    if scan_row.get("current_title"):
+                        cj = candidate_data.get("canonical_json") or {}
+                        if isinstance(cj, dict):
+                            cj = {**cj, "current_title": scan_row["current_title"]}
+                            candidate_data["canonical_json"] = cj
+                else:
+                    try:
+                        from match_insights import enrich_match
+
+                        enriched = enrich_match(
+                            jd_id,
+                            {
+                                "resume_id": str(resume_id),
+                                "ats_score": ats_score,
+                                "candidate_name": candidate_data.get("candidate_name"),
+                            },
+                        )
+                        candidate_data["matched_skills"] = enriched.get("matched_skills") or []
+                        candidate_data["reason_to_select"] = enriched.get("reason_to_select") or ""
+                    except Exception:
+                        pass
+
                 candidate_email = candidate_data.get("email")
                 if not candidate_email:
                     results.append({
@@ -1308,8 +1964,8 @@ async def send_emails_to_candidates(
                         """
                         INSERT INTO candidate_outreach 
                         (id, resume_id, jd_id, candidate_email, candidate_name, 
-                         email_subject, email_body, embedding, rank, ats_score)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s)
+                         email_subject, email_body, embedding, rank, ats_score, email_sent, sent_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, TRUE, NOW())
                         """,
                         [
                             outreach_id,
@@ -1321,8 +1977,8 @@ async def send_emails_to_candidates(
                             email_content["body"],
                             embedding_literal,
                             idx,
-                            ats_score
-                        ]
+                            ats_score,
+                        ],
                     )
                     conn.commit()
                     
@@ -2308,8 +2964,147 @@ async def get_interviews_list(jd_id: str = None):
         conn.close()
 
 
-@app.get("/interviews/status")
-async def get_interviews_status(
+def _hr_status_label(interview_status, final_recommendation, acknowledgement) -> str:
+    if final_recommendation == "Make Offer":
+        return "Hired"
+    if final_recommendation == "Not Selected":
+        return "Rejected"
+    if interview_status == "scheduled":
+        return "Scheduled"
+    if interview_status == "completed":
+        return "Completed"
+    if acknowledgement == "not_interested":
+        return "Rejected"
+    return "Pending"
+
+
+@app.get("/api/interviews/all")
+async def get_all_interviews_api(
+    current_user: dict = Depends(get_current_user),
+    email_sent_only: bool = True,
+    jd_id: Optional[str] = None,
+    status: Optional[str] = None,
+    q: Optional[str] = None,
+):
+    """JSON feed for HR dashboard — defaults to candidates who received Send Mail outreach."""
+    from db import get_connection
+
+    conn = get_connection()
+    try:
+        cur = conn.cursor()
+        filters = []
+        params: List[Any] = []
+
+        if email_sent_only:
+            filters.append(
+                """(
+                    co.email_sent IS TRUE
+                    OR (
+                        co.email_sent IS NULL
+                        AND co.email_subject IS DISTINCT FROM 'Application for role'
+                        AND COALESCE(co.email_body, '') LIKE '%%/acknowledge/%%'
+                    )
+                )"""
+            )
+        if jd_id:
+            filters.append("co.jd_id = %s")
+            params.append(jd_id)
+        if q:
+            filters.append(
+                """(
+                    LOWER(co.candidate_name) LIKE LOWER(%s)
+                    OR LOWER(co.candidate_email) LIKE LOWER(%s)
+                    OR LOWER(m.title) LIKE LOWER(%s)
+                )"""
+            )
+            params.extend([f"%{q}%", f"%{q}%", f"%{q}%"])
+        if status:
+            s = status.lower()
+            if s == "scheduled":
+                filters.append("i.status = 'scheduled'")
+            elif s == "completed":
+                filters.append("i.status = 'completed'")
+            elif s == "hired":
+                filters.append("f.final_recommendation = 'Make Offer'")
+            elif s == "rejected":
+                filters.append(
+                    "(f.final_recommendation = 'Not Selected' OR co.acknowledgement = 'not_interested')"
+                )
+            elif s == "pending":
+                filters.append(
+                    "(i.id IS NULL OR i.status IN ('pending', 'waiting_approval', 'pending_reschedule'))"
+                )
+
+        where_sql = ("WHERE " + " AND ".join(filters)) if filters else ""
+        cur.execute(
+            f"""
+            SELECT
+                co.id,
+                co.candidate_name,
+                co.candidate_email,
+                m.title,
+                m.id,
+                COALESCE(co.sent_at, co.created_at) AS email_sent_ts,
+                i.id,
+                i.interview_date,
+                i.confirmed_slot_time,
+                i.status,
+                co.acknowledgement,
+                f.final_recommendation
+            FROM candidate_outreach co
+            JOIN memories m ON m.id = co.jd_id
+            LEFT JOIN interview_schedules i ON i.outreach_id = co.id
+                AND (i.interview_round = 1 OR i.interview_round IS NULL)
+            LEFT JOIN feedback f ON f.interview_id = i.id
+            {where_sql}
+            ORDER BY co.sent_at DESC NULLS LAST, co.created_at DESC
+            """,
+            params,
+        )
+        rows = cur.fetchall()
+        cur.close()
+        interviews = []
+        for row in rows:
+            (
+                outreach_id,
+                cand_name,
+                cand_email,
+                jd_title,
+                jd_id_val,
+                email_sent_ts,
+                interview_id,
+                interview_date,
+                confirmed_time,
+                interview_status,
+                acknowledgement,
+                final_recommendation,
+            ) = row
+            interview_val = confirmed_time or interview_date
+            interviews.append(
+                {
+                    "id": str(interview_id or outreach_id),
+                    "outreach_id": str(outreach_id),
+                    "candidate_name": cand_name,
+                    "candidate_email": cand_email,
+                    "jd_title": jd_title,
+                    "jd_id": str(jd_id_val) if jd_id_val else None,
+                    "email_sent_at": email_sent_ts.isoformat() if hasattr(email_sent_ts, "isoformat") else None,
+                    "interview_date": interview_val.isoformat() if hasattr(interview_val, "isoformat") else (str(interview_val) if interview_val else None),
+                    "status": _hr_status_label(
+                        interview_status, final_recommendation, acknowledgement
+                    ),
+                    "feedback_submitted": bool(final_recommendation),
+                }
+            )
+        return {"interviews": interviews, "email_sent_only": email_sent_only}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching interviews: {str(e)}")
+    finally:
+        conn.close()
+
+
+@app.get("/interviews/status/legacy")
+async def get_interviews_status_legacy(
     jd_id: str | None = None,
     status: str | None = None,
     q: str | None = None,
@@ -2318,7 +3113,7 @@ async def get_interviews_status(
     decision: str | None = None,
 ):
     """
-    HR dashboard: show all interviews/outreach in an HTML table with filters, search, and sorting.
+    Legacy HR table with filters (advanced). Prefer /hr for the main dashboard.
     """
     from db import get_connection
     from config import INTERVIEWER_EMAIL, COMPANY_NAME
@@ -2562,7 +3357,10 @@ async def get_interviews_status(
             safe_event_link = str(event_link).replace('"', '&quot;') if event_link else ""
             
             # Calendar Link
-            cal_html = f'<a href="{safe_event_link}" target="_blank" class="btn-link">📅 Open</a>' if event_link else "-"
+            cal_html = (
+                f'<a href="{safe_event_link}" target="_blank" class="link-btn">Open calendar</a>'
+                if event_link else "-"
+            )
 
             table_rows += f"""
             <tr>
@@ -2570,13 +3368,13 @@ async def get_interviews_status(
                 <td><span title="{safe_jd_id_val}">{safe_jd_display_id}</span></td>
                 <td>{safe_role}</td>
                 <td>{date_str} {time_str}</td>
-                <td><span class="badge {status_class}">{display_status}</span></td>
+                <td><span class="status-badge {status_class}">{display_status}</span></td>
                 <td>{cal_html}</td>
                 <td>
-                    <button class="btn btn-small btn-primary view-details-trigger" data-id="{safe_outreach_id}">View Details</button>
+                    <button type="button" class="action-btn view-details-trigger" data-id="{safe_outreach_id}">View Details</button>
                 </td>
-                <td><span class="badge {decision_class}">{decision_display}</span></td>
-                <td><span class="badge {hr_decision_class}">{hr_decision_display}</span></td>
+                <td><span class="status-badge {decision_class}">{decision_display}</span></td>
+                <td><span class="status-badge {hr_decision_class}">{hr_decision_display}</span></td>
             </tr>
             """
     
@@ -2590,46 +3388,200 @@ async def get_interviews_status(
     # Also replace </script> to prevent breaking the HTML script tag
     interviews_data_json = json.dumps(all_interviews_data, ensure_ascii=True, default=str).replace("</", "<\\/")
 
+    empty_row = '<tr><td colspan="9"><div class="empty-state">No records found matching your criteria.</div></td></tr>'
+    record_count = len(rows)
+
     html_content = f"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HR Dashboard</title>
-    <link rel="stylesheet" href="/static/styles.css">
+    <title>HR Dashboard | TekLeaders AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <style>
-        .badge {{ padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }}
-        .status-pending {{ background-color: #ffeeba; color: #856404; }}
-        .status-warning {{ background-color: #ffc107; color: #212529; }}
-        .status-scheduled {{ background-color: #d4edda; color: #155724; }}
-        .status-completed {{ background-color: #cce5ff; color: #004085; }}
-        .status-cancelled {{ background-color: #f8d7da; color: #721c24; }}
-        
-        .modal {{ display: none; position: fixed; z-index: 10000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }}
-        .modal-content {{ background-color: #fefefe; margin: 15% auto; padding: 20px; border: 1px solid #888; width: 500px; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }}
-        .close {{ color: #aaa; float: right; font-size: 28px; font-weight: bold; cursor: pointer; }}
-        .close:hover {{ color: black; }}
-        .detail-row {{ display: flex; justify-content: space-between; margin-bottom: 10px; border-bottom: 1px solid #eee; padding-bottom: 5px; }}
-        .detail-label {{ font-weight: bold; color: #555; }}
-        .header-actions {{ display: flex; gap: 10px; }}
+        *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        :root {{
+            --primary-color: #c026d3;
+            --primary-hover: #a21caf;
+            --card-bg: #ffffff;
+            --text-color: #1f2937;
+            --border-color: #f5d0fe;
+            --text-secondary: #4b5563;
+            --text-muted: #6b7280;
+            --gradient: linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%);
+        }}
+        body {{
+            font-family: 'Inter', sans-serif;
+            background: #ffffff;
+            color: var(--text-color);
+            min-height: 100vh;
+        }}
+        .page-wrapper {{ max-width: 1200px; margin: 0 auto; padding: 32px 20px 80px; }}
+        .back-link {{
+            display: inline-flex; align-items: center; gap: 8px;
+            color: var(--text-secondary); font-size: 14px; text-decoration: none;
+            margin-bottom: 28px;
+        }}
+        .back-link:hover {{ color: var(--primary-color); }}
+        .back-link svg {{ width: 16px; height: 16px; }}
+        .header {{ text-align: center; margin-bottom: 32px; }}
+        .header-badge {{
+            display: inline-flex; align-items: center; gap: 8px;
+            background: #ffffff; border: 1px solid #e5e7eb;
+            border-radius: 100px; padding: 6px 16px;
+            font-size: 12px; font-weight: 600; letter-spacing: 0.05em;
+            color: var(--primary-color); margin-bottom: 16px; text-transform: uppercase;
+        }}
+        .header-badge::before {{
+            content: ''; width: 6px; height: 6px; border-radius: 50%;
+            background: var(--primary-color);
+        }}
+        .header h1 {{
+            font-size: clamp(26px, 5vw, 36px); font-weight: 800;
+            background: var(--gradient);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            background-clip: text; margin-bottom: 8px;
+        }}
+        .header p {{ color: var(--text-secondary); font-size: 16px; }}
+        .header-actions {{
+            display: flex; justify-content: center; gap: 12px; margin-top: 20px; flex-wrap: wrap;
+        }}
+        .stat-strip {{
+            display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-bottom: 24px;
+        }}
+        .stat-pill {{
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 12px; padding: 12px 20px; font-size: 14px; color: var(--text-secondary);
+        }}
+        .stat-pill strong {{ color: var(--text-color); font-weight: 700; }}
+        .card {{
+            background: var(--card-bg); border: 1px solid var(--border-color);
+            border-radius: 20px; padding: 28px;
+            box-shadow: 0 10px 35px rgba(192, 38, 211, 0.06);
+        }}
+        .card-header {{ margin-bottom: 24px; }}
+        .card-title {{ font-size: 18px; font-weight: 700; }}
+        .card-subtitle {{ font-size: 13px; color: var(--text-secondary); margin-top: 4px; }}
+        label {{
+            display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary);
+            margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase;
+        }}
+        select, input[type="text"] {{
+            width: 100%; background: #ffffff; border: 1px solid var(--border-color);
+            border-radius: 10px; color: var(--text-color); font-size: 14px;
+            font-family: inherit; padding: 10px 36px 10px 12px; outline: none;
+        }}
+        select {{
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 10px center;
+        }}
+        select:focus, input:focus {{
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 3px rgba(192, 38, 211, 0.12);
+        }}
+        .filter-form {{
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+            gap: 14px; align-items: end; margin-bottom: 24px;
+        }}
+        .filter-form .search-field {{ grid-column: 1 / -1; }}
+        @media (min-width: 900px) {{
+            .filter-form .search-field {{ grid-column: span 2; }}
+        }}
+        .filter-actions {{ display: flex; gap: 10px; flex-wrap: wrap; }}
+        .btn {{
+            display: inline-flex; align-items: center; justify-content: center;
+            border: none; border-radius: 10px; font-family: inherit;
+            font-size: 14px; font-weight: 600; cursor: pointer; padding: 10px 18px;
+            text-decoration: none; transition: all 0.2s;
+        }}
+        .btn-primary {{ background: var(--gradient); color: #fff; }}
+        .btn-primary:hover {{ transform: translateY(-1px); box-shadow: 0 6px 20px rgba(192,38,211,0.25); }}
+        .btn-ghost {{
+            background: #fff; color: var(--text-secondary);
+            border: 1px solid var(--border-color);
+        }}
+        .btn-ghost:hover {{ color: var(--text-color); border-color: var(--primary-color); }}
+        .table-wrap {{ overflow-x: auto; }}
+        table {{ width: 100%; border-collapse: collapse; }}
+        thead th {{
+            padding: 12px 14px; text-align: left; font-size: 11px; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted);
+            border-bottom: 1px solid var(--border-color); background: #fafafa;
+        }}
+        tbody td {{ padding: 14px; font-size: 14px; border-bottom: 1px solid #f5d0fe; vertical-align: middle; }}
+        tbody tr:hover {{ background: #f9fafb; }}
+        .status-badge {{
+            display: inline-flex; padding: 4px 10px; border-radius: 100px;
+            font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+        }}
+        .status-pending {{ background: #fffbeb; color: #92400e; border: 1px solid #fde68a; }}
+        .status-warning {{ background: #fef3c7; color: #b45309; border: 1px solid #fcd34d; }}
+        .status-scheduled {{ background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }}
+        .status-completed {{ background: #ecfeff; color: #0891b2; border: 1px solid #a5f3fc; }}
+        .status-cancelled {{ background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; }}
+        .link-btn {{ color: var(--primary-color); font-weight: 600; text-decoration: none; font-size: 13px; }}
+        .link-btn:hover {{ text-decoration: underline; }}
+        .action-btn {{
+            background: var(--gradient); color: #fff; border: none;
+            padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+        }}
+        .action-btn:hover {{ opacity: 0.92; }}
+        .empty-state {{ text-align: center; padding: 40px 16px; color: var(--text-muted); font-size: 14px; }}
+        .modal {{
+            display: none; position: fixed; z-index: 10000; inset: 0;
+            background: rgba(15, 23, 42, 0.45); padding: 20px; overflow: auto;
+        }}
+        .modal-content {{
+            background: #fff; margin: 4vh auto; padding: 28px; max-width: 560px;
+            border: 1px solid var(--border-color); border-radius: 16px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+        }}
+        .modal-content h2 {{ font-size: 20px; margin-bottom: 16px; }}
+        .close {{
+            float: right; font-size: 24px; font-weight: 400; cursor: pointer;
+            color: var(--text-muted); line-height: 1;
+        }}
+        .close:hover {{ color: var(--text-color); }}
+        .detail-row {{
+            display: flex; justify-content: space-between; gap: 12px;
+            margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid #f3f4f6;
+            font-size: 14px;
+        }}
+        .detail-label {{ font-weight: 600; color: var(--text-secondary); }}
+        #feedbackSection h3 {{ margin: 16px 0 10px; font-size: 16px; }}
     </style>
 </head>
 <body>
-  <div class="container" style="max-width: 1200px;">
-    <header style="display: flex; justify-content: space-between; align-items: center;">
-      <div>
-        <h1>HR Dashboard</h1>
-        <p class="subtitle">Interview Management & Tracking</p>
-      </div>
+  <div class="page-wrapper">
+    <a href="/" class="back-link">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+      Back to Home
+    </a>
+
+    <div class="header">
+      <div class="header-badge">Step 3 of 3</div>
+      <h1>HR Dashboard</h1>
+      <p>Interview management, feedback tracking, and hiring decisions.</p>
       <div class="header-actions">
-        <a href="/" class="btn btn-outline">Back to Home</a>
-        <a href="/interviews/status" class="btn btn-secondary">↻ Refresh</a>
+        <a href="/interviews/status" class="btn btn-ghost">Refresh</a>
       </div>
-    </header>
-    
+    </div>
+
+    <div class="stat-strip">
+      <div class="stat-pill"><strong>{record_count}</strong> records shown</div>
+    </div>
+
     <div class="card">
-      <form method="get" action="/interviews/status" style="display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1rem; flex-wrap: wrap;">
+      <div class="card-header">
+        <div class="card-title">Interview Records</div>
+        <div class="card-subtitle">Filter, search, and review candidate interview status.</div>
+      </div>
+
+      <form method="get" action="/interviews/status" class="filter-form">
         <div>
           <label for="status">Filter by Status</label>
           <select name="status" id="status">
@@ -2664,45 +3616,44 @@ async def get_interviews_status(
             <option value="asc" {"selected" if (sort_order or "desc") == "asc" else ""}>Ascending</option>
           </select>
         </div>
-        <div style="flex-grow: 1;">
+        <div class="search-field">
           <label for="q">Search</label>
-          <input type="text" id="q" name="q" placeholder="Candidate Name, Email, or Role" value="{q or ''}" style="width: 100%;"/>
+          <input type="text" id="q" name="q" placeholder="Candidate name, email, or role" value="{html.escape(q or '')}"/>
         </div>
-        <div style="display: flex; gap: 0.5rem;">
+        <div class="filter-actions">
           <button type="submit" class="btn btn-primary">Apply Filters</button>
-          <a href="/interviews/status" class="btn btn-outline">Clear</a>
+          <a href="/interviews/status" class="btn btn-ghost">Clear</a>
         </div>
       </form>
-      
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th>Uploaded By</th>
-            <th>JD ID</th>
-            <th>Role</th>
-            <th>Date & Time</th>
-            <th>Status</th>
-            <th>Calendar</th>
-            <th>Actions</th>
-            <th>Technical Round Decision</th>
-            <th>HR Decision</th>
-          </tr>
-        </thead>
-        <tbody>
-          {table_rows or '<tr><td colspan="9" style="text-align:center; padding: 20px;">No records found matching your criteria.</td></tr>'}
-        </tbody>
-      </table>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Uploaded By</th>
+              <th>JD ID</th>
+              <th>Role</th>
+              <th>Date &amp; Time</th>
+              <th>Status</th>
+              <th>Calendar</th>
+              <th>Actions</th>
+              <th>Technical Decision</th>
+              <th>HR Decision</th>
+            </tr>
+          </thead>
+          <tbody>
+            {table_rows or empty_row}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>
 
-  <!-- Details Modal -->
   <div id="detailsModal" class="modal">
     <div class="modal-content">
       <span class="close" onclick="closeModal()">&times;</span>
-      <h2 style="margin-top: 0;">Interview Details</h2>
-      <div id="modalBody">
-        <!-- Content populated by JS -->
-      </div>
+      <h2>Interview Details</h2>
+      <div id="modalBody"></div>
     </div>
   </div>
 
@@ -2763,8 +3714,8 @@ async def get_interviews_status(
                 <div class="detail-row"><span class="detail-label">Feedback Sent:</span> <span style="color: ${{data.feedback_sent === 'Not sent yet' ? '#dc3545' : '#28a745'}};">${{data.feedback_sent}}</span></div>
                 <hr>
                 <div style="text-align: center; margin-top: 15px;">
-                    <button class="btn btn-primary" onclick="viewTechnicalFeedback('${{data.interview_id}}')" style="margin-right: 10px;">📋 View Technical Feedback</button>
-                    ${{data.hr_interview_id ? `<button class="btn btn-primary" onclick="viewHrFeedback('${{data.hr_interview_id}}')" style="margin-right: 10px;">📋 View HR Feedback</button>` : ''}}
+                    <button class="btn btn-primary" onclick="viewTechnicalFeedback('${{data.interview_id}}')" style="margin-right: 10px;">View Technical Feedback</button>
+                    ${{data.hr_interview_id ? `<button class="btn btn-primary" onclick="viewHrFeedback('${{data.hr_interview_id}}')" style="margin-right: 10px;">View HR Feedback</button>` : ''}}
                     <button class="btn btn-outline" onclick="closeModal()">Close</button>
                 </div>
                 <div id="feedbackSection" style="margin-top: 20px; display: none;">
@@ -2857,7 +3808,7 @@ async def get_interviews_status(
                             <div style="margin-top: 25px; padding-top: 20px; border-top: 2px solid #e5e7eb; text-align: center;">
                                 <p><strong>Candidate passed Technical Round.</strong></p>
                                 <button id="scheduleHrBtn-${{interviewId}}" class="btn" style="background-color: #667eea; color: white;" onclick="scheduleHrRound('${{interviewId}}')">
-                                    📅 Schedule HR Round
+                                    Schedule HR Round
                                 </button>
                                 <p id="hrStatus-${{interviewId}}"></p>
                             </div>
@@ -2883,7 +3834,7 @@ async def get_interviews_status(
                     `;
                 }}
             }} else {{
-                feedbackContent.innerHTML = '<p style="text-align: center; color: #999;">📭 No feedback submitted yet for this interview.</p>';
+                feedbackContent.innerHTML = '<p style="text-align: center; color: #999;">No feedback submitted yet for this interview.</p>';
             }}
         }} catch (error) {{
             console.error('Error fetching feedback:', error);
@@ -2973,7 +3924,7 @@ async def get_interviews_status(
                     `;
                 }}
             }} else {{
-                feedbackContent.innerHTML = '<p style="text-align: center; color: #999;">📭 No HR feedback submitted yet for this interview.</p>';
+                feedbackContent.innerHTML = '<p style="text-align: center; color: #999;">No HR feedback submitted yet for this interview.</p>';
             }}
         }} catch (error) {{
             console.error('Error fetching HR feedback:', error);
@@ -3299,8 +4250,55 @@ async def send_hr_decision(request: Dict[str, Any]):
         conn.close()
 
 
+# Register auth UI routes first in the router (highest priority after middleware)
+async def _login_ui_page(request):
+    return _read_auth_html("login.html")
+
+
+async def _signup_ui_page(request):
+    return _read_auth_html("signup.html")
+
+
+from starlette.routing import Route
+
+async def _login_api(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
+    payload = AgencyLoginRequest(
+        email=body.get("email") or body.get("username") or "",
+        password=body.get("password") or "",
+    )
+    email = str(payload.email).strip().lower()
+    user = authenticate_user(email, payload.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Incorrect email or password")
+    return {"access_token": user["username"], "token_type": "bearer"}
+
+
+for _path, _endpoint, _methods in (
+    ("/login", _login_ui_page, ["GET"]),
+    ("/auth/login", _login_ui_page, ["GET"]),
+    ("/sign-in", _login_ui_page, ["GET"]),
+    ("/signup", _signup_ui_page, ["GET"]),
+    ("/auth/signup", _signup_ui_page, ["GET"]),
+    ("/sign-up", _signup_ui_page, ["GET"]),
+    ("/api/login", _login_api, ["POST"]),
+    ("/login", _login_api, ["POST"]),
+    ("/api/v1/agency/auth/login", _login_api, ["POST"]),
+):
+    app.router.routes.insert(0, Route(_path, endpoint=_endpoint, methods=_methods))
+
+print(f"[HIRING] Auth UI loaded from {_STATIC_DIR}")
+print("[HIRING] Login:  http://127.0.0.1:8000/login")
+print("[HIRING] Signup: http://127.0.0.1:8000/signup")
+print("[HIRING] Fallback: http://127.0.0.1:8000/static/login.html")
+
+
 if __name__ == "__main__":
-    import os
     import uvicorn
+
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    print(f"[HIRING] Starting main.py from {_BASE_DIR} on port {port}")
+    uvicorn.run(app, host="127.0.0.1", port=port, reload=True)

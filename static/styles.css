@@ -1,38 +1,49 @@
 :root {
-  --primary-color: #2563eb;
-  --primary-hover: #1d4ed8;
-  --bg-color: #f3f4f6;
+  --primary-color: #c026d3;
+  --primary-hover: #a21caf;
+  --bg-color: #ffffff;
   --card-bg: #ffffff;
   --text-color: #1f2937;
-  --border-color: #e5e7eb;
+  --border-color: #f5d0fe;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 body {
   font-family: 'Inter', sans-serif;
-  background: radial-gradient(circle at top left, #e0f2fe, #eef2ff, #f9fafb);
+  background: #ffffff;
   color: var(--text-color);
   margin: 0;
   padding: 0;
   display: flex;
   justify-content: center;
   min-height: 100vh;
+  overflow-x: hidden;
+  /* Prevent horizontal scroll */
 }
 
 .container {
   width: 100%;
   max-width: 1100px;
-  padding: 2.5rem 2rem 3rem;
+  padding: 1rem 2rem 1rem;
+  /* Compact padding */
 }
 
 header {
-  text-align: center;
+  text-align: right;
   margin-bottom: 3rem;
+  padding-right: 5%;
 }
 
 h1 {
   font-size: 2.4rem;
   font-weight: 700;
-  color: #0f172a;
+  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
   margin-bottom: 0.5rem;
 }
 
@@ -57,7 +68,7 @@ h1 {
 
 .btn {
   display: inline-block;
-  background-color: var(--primary-color);
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
   color: white;
   padding: 0.75rem 1.5rem;
   border-radius: 0.5rem;
@@ -65,19 +76,19 @@ h1 {
   text-decoration: none;
   cursor: pointer;
   border: none;
-  transition: background-color 0.2s;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
 .btn:hover {
-  background-color: var(--primary-hover);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.3), 0 4px 6px -2px rgba(124, 58, 237, 0.1);
 }
 
-.btn-secondary {
-  background-color: #9ca3af;
-}
-
+/* .btn-secondary removed to inherit gradient from .btn */
 .btn-secondary:hover {
-  background-color: #6b7280;
+  transform: translateY(-2px);
+  /* Inherit hover shadow from btn */
 }
 
 .form-group {
@@ -94,10 +105,41 @@ input[type="text"],
 input[type="number"],
 input[type="file"] {
   width: 100%;
-  padding: 0.75rem;
+  padding: 0.5rem;
+  /* Reduced padding for file input container */
   border: 1px solid var(--border-color);
   border-radius: 0.5rem;
   margin-top: 0.25rem;
+  font-size: 0.9rem;
+}
+
+input[type="file"]::file-selector-button {
+  background-color: #f3f4f6;
+  color: #1f2937;
+  padding: 0.35rem 0.8rem;
+  border-radius: 0.3rem;
+  border: 1px solid #d1d5db;
+  font-weight: 500;
+  font-size: 0.85rem;
+  margin-right: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+input[type="file"]::file-selector-button:hover {
+  background-color: #e5e7eb;
+  box-shadow: none;
+}
+
+.card h3 {
+  font-size: 1.5rem;
+  margin-top: 0;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
 }
 
 .portal-selection {
@@ -182,7 +224,8 @@ input[type="file"] {
 }
 
 .results-table th {
-  background-color: #f9fafb;
+  background-color: #fae8ff;
+  color: #6b21a8;
   font-weight: 600;
 }
 
@@ -260,9 +303,9 @@ select {
 }
 
 .interviews-table thead th {
-  background-color: #f9fafb;
+  background-color: #fae8ff;
   font-weight: 600;
-  color: #4b5563;
+  color: #6b21a8;
   position: sticky;
   top: 0;
   z-index: 1;
@@ -312,5 +355,208 @@ select {
 
   .container {
     padding-inline: 1.25rem;
+  }
+}
+
+/* --- Journey Path UI (Horizontal) --- */
+
+.journey-section {
+  position: relative;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 2rem 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+/* Horizontal dashed line SVG background */
+.journey-path-bg {
+  position: absolute;
+  top: 40px;
+  left: 0;
+  width: 100%;
+  height: 200px;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* Update SVG Stroke color globally for this component if possible via CSS, 
+   otherwise rely on the SVG attribute, but we can override stroke here */
+.journey-path-bg path {
+  stroke: #cbd5e1;
+  /* Light gray-blue */
+  stroke-width: 3;
+}
+
+.journey-step {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  text-align: center;
+  opacity: 0;
+  animation: fadeSlideUp 0.6s ease forwards;
+  transition: transform 0.3s ease;
+}
+
+/* Zigzag positioning to follow the wave */
+.journey-step:nth-child(2) {
+  margin-top: 80px;
+  margin-left: -40px;
+  animation-delay: 0.1s;
+}
+
+.journey-step:nth-child(3) {
+  margin-top: 80px;
+  animation-delay: 0.2s;
+}
+
+.journey-step:nth-child(4) {
+  margin-top: 5px;
+  animation-delay: 0.3s;
+}
+
+
+/* Simplified Step Content */
+.step-content {
+  background: transparent;
+  padding: 0.5rem;
+  width: 90%;
+  cursor: pointer;
+  position: relative;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+  z-index: 10;
+}
+
+.step-title {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 0.25rem;
+  transition: color 0.3s;
+}
+
+.step-desc {
+  color: #64748b;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  transition: color 0.3s;
+}
+
+.journey-step:hover .step-title {
+  color: #7c3aed;
+  /* Violet on hover */
+}
+
+.journey-step:hover .step-desc {
+  color: #9333ea;
+  /* Slightly darker/richer violet on hover */
+}
+
+/* Connection circles on the path */
+/* Connection circles on the path */
+.step-marker {
+  width: 65px;
+  height: 65px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  /* Stronger default shadow */
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  cursor: pointer;
+  position: relative;
+}
+
+.journey-icon-img {
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  object-fit: cover;
+  /* Ensures the image covers the circle nicely */
+  transition: all 0.3s ease;
+  padding: 1px;
+  /* Reduced padding (thinner white border) */
+}
+
+/* HOVER EFFECT: Gradient Ring */
+.journey-step:hover .step-marker {
+  transform: translateY(-10px) scale(1.1);
+  box-shadow: 0 20px 40px rgba(124, 58, 237, 0.5);
+  /* Violet glowing shadow - Increased intensity */
+}
+
+/* Create the gradient ring using a pseudo-element behind/around the marker */
+.journey-step:hover .step-marker::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: -4px;
+  right: -4px;
+  bottom: -4px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #ec4899, #8b5cf6);
+  /* Pink to Violet */
+  z-index: -1;
+  animation: spinGradient 2s linear infinite;
+  /* Optional: subtle rotation */
+}
+
+/* Ensure the marker background stays white to cover the center of the gradient if needed */
+.journey-step:hover .step-marker {
+  background: white;
+}
+
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive: Stack on mobile */
+@media (max-width: 768px) {
+  .journey-section {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3rem;
+  }
+
+  .journey-path-bg {
+    display: none;
+    /* Hide horizontal path on mobile */
+  }
+
+  .journey-step {
+    flex-direction: row;
+    align-items: flex-start;
+    text-align: left;
+    width: 100%;
+  }
+
+  .step-marker {
+    margin-right: 1.5rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0;
+    flex-shrink: 0;
+  }
+
+  .step-content {
+    margin-top: 0;
+    width: auto;
+    padding: 0;
   }
 }

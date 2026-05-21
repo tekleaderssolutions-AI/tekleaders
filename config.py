@@ -11,7 +11,7 @@ ENV_FILE = os.environ.get("ENV_FILE", ".env")
 env_path = (Path(ENV_FILE).resolve()
             if Path(ENV_FILE).is_absolute()
             else BASE_DIR / ENV_FILE)
-load_dotenv(dotenv_path=env_path, override=False)
+load_dotenv(dotenv_path=env_path, override=True)
  
  
 def get_env(name: str, default: str | None = None, *, required: bool = False) -> str | None:
@@ -24,12 +24,45 @@ def get_env(name: str, default: str | None = None, *, required: bool = False) ->
         raise ValueError(f"Missing required environment variable: {name}")
     return value
  
-# Google Gemini API Configuration
-GEMINI_API_KEY = get_env("GEMINI_API_KEY", required=True)
+# Google Gemini API Configuration (optional if OpenAI is configured)
+GEMINI_API_KEY = get_env("GEMINI_API_KEY", "")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 CHAT_MODEL = get_env("CHAT_MODEL", "gemini-2.5-flash-exp")
 EMBEDDING_MODEL = get_env("EMBEDDING_MODEL", "text-embedding-004")
+
+# OpenAI (JD + resume parsing + embeddings when provider is openai)
+OPENAI_API_KEY = get_env("OPENAI_API_KEY", "")
+OPENAI_CHAT_MODEL = get_env("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+OPENAI_EMBEDDING_MODEL = get_env("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+JD_AI_PROVIDER = get_env("JD_AI_PROVIDER", "openai").lower()
+RESUME_AI_PROVIDER = get_env("RESUME_AI_PROVIDER", "openai").lower()
+
+if not (OPENAI_API_KEY or "").strip() and not (GEMINI_API_KEY or "").strip():
+    raise ValueError("Set OPENAI_API_KEY or GEMINI_API_KEY in hiring/.env")
+
+
+def effective_jd_ai_provider() -> str:
+    """Use OpenAI for JD when key is set and provider is not explicitly gemini."""
+    provider = (os.environ.get("JD_AI_PROVIDER") or JD_AI_PROVIDER or "openai").lower()
+    api_key = (os.environ.get("OPENAI_API_KEY") or OPENAI_API_KEY or "").strip()
+    if provider == "gemini":
+        return "gemini"
+    if api_key:
+        return "openai"
+    return "gemini"
+
+
+def effective_resume_ai_provider() -> str:
+    provider = (
+        os.environ.get("RESUME_AI_PROVIDER") or RESUME_AI_PROVIDER or JD_AI_PROVIDER or "openai"
+    ).lower()
+    api_key = (os.environ.get("OPENAI_API_KEY") or OPENAI_API_KEY or "").strip()
+    if provider == "gemini":
+        return "gemini"
+    if api_key:
+        return "openai"
+    return "gemini"
  
 DB_HOST = get_env("DB_HOST", "localhost")
 DB_PORT = int(get_env("DB_PORT", "5432"))
@@ -42,9 +75,10 @@ EMBEDDING_DIM = 768  # text-embedding-004 outputs 768-d vectors
 # Email Configuration
 SMTP_HOST = get_env("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(get_env("SMTP_PORT", "587"))
-SMTP_USER = get_env("SMTP_USER", "srikanthtata8374@gmail.com")
-SMTP_PASSWORD = get_env("SMTP_PASSWORD", "lbkr xlod igfj wzrg")  # Gmail App Password
-FROM_EMAIL = get_env("FROM_EMAIL", "srikanthtata8374@gmail.com")
+SMTP_USER = get_env("SMTP_USER", "recruit@tekleaders.io")
+SMTP_PASSWORD = get_env("SMTP_PASSWORD", "")  # App password or SMTP password from IT
+FROM_EMAIL = get_env("FROM_EMAIL", "recruit@tekleaders.io")
+REPLY_TO_EMAIL = get_env("REPLY_TO_EMAIL", FROM_EMAIL)
 COMPANY_NAME = get_env("COMPANY_NAME", "Tek Leaders")
 
 # Google Calendar Configuration

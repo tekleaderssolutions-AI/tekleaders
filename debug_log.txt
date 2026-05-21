@@ -99,3 +99,15 @@ Query returned 117 rows
 Query returned 117 rows
 Query returned 118 rows
 Query returned 118 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows
+Query returned 0 rows

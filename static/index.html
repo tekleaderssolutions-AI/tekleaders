@@ -5,7 +5,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Resume Ranking Portal</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/styles.css?v=10">
+  <link rel="stylesheet" href="/static/welcome.css?v=11">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     .user-header {
@@ -27,118 +28,111 @@
       color: #2d3748;
       font-weight: 600;
     }
+    
+    .flipping-title-container {
+      height: 50px;
+      overflow: hidden;
+      margin-bottom: 0.5rem;
+      display: flex;
+      justify-content: center;
+    }
+
+    .flipping-title-wrapper {
+      animation: flipWords 9s cubic-bezier(0.68, -0.55, 0.27, 1.55) infinite;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .flipping-title-wrapper h1 {
+      height: 50px;
+      margin: 0;
+      padding: 0;
+      line-height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    @keyframes flipWords {
+      0%, 25% { transform: translateY(0); }
+      33%, 58% { transform: translateY(-50px); }
+      66%, 91% { transform: translateY(-100px); }
+      100% { transform: translateY(-150px); }
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <header>
-      <h1>Resume Ranking Portal</h1>
-      <p class="subtitle">AI-Powered Recruitment Assistant</p>
-    </header>
-
-    <!-- User Info & Logout -->
-    <div class="user-header">
-      <div class="user-info">
-        Welcome, <strong id="username-display">User</strong> 👋
+    <!-- Welcome Section -->
+    <div class="welcome-section">
+      <div class="title-container">
+        <div class="flipping-title-container">
+          <div class="flipping-title-wrapper">
+            <h1><span>Intelligent Applicant Tracking</span></h1>
+            <h1><span>Resume Ranking Portal</span></h1>
+            <h1><span>AI Talent Matcher</span></h1>
+            <h1><span>Intelligent Applicant Tracking</span></h1>
+          </div>
+        </div>
+        <p class="subtitle">AI-Powered Recruitment Assistant</p>
+        <p class="welcome-text">Welcome, <span id="username-display" class="username-span">User</span></p>
       </div>
-      <button onclick="logout()" class="btn btn-secondary">🚪 Logout</button>
+
+      <button onclick="logout()" class="logout-btn">Logout</button>
     </div>
 
     <!-- Landing Page / Portal Selection -->
     <div id="landing-page">
-      <div class="portal-selection">
-        <div class="card portal-card" onclick="app.showAdminPortal()">
-          <div class="portal-icon"></div>
-          <h2>Admin Portal</h2>
-          <p>Upload and manage resumes</p>
+
+      <div class="journey-section">
+        <!-- SVG Horizontal Winding Path Background -->
+        <svg class="journey-path-bg" viewBox="0 0 1000 200" preserveAspectRatio="none">
+          <!-- Winding path: Starts mid-left, curves down, then up, then down/flat -->
+          <path d="M 0 50 Q 250 200 500 100 T 1000 50" fill="none" stroke="#cbd5e1" stroke-width="4"
+            stroke-dasharray="10,10" />
+        </svg>
+
+        <!-- JD -->
+        <div class="journey-step">
+          <div class="step-marker" onclick="showAdminAnimation()">
+            <img src="/static/admin-icon.jpg" alt="Admin" class="journey-icon-img"
+              style="width: 65px; height: 65px; border-radius: 50%; object-fit: cover;">
+          </div>
+          <div class="step-content" onclick="showAdminAnimation()">
+            <div class="step-title">JD</div>
+            <div class="step-desc">Upload and manage Job Descriptions for AI-powered matching.</div>
+          </div>
         </div>
-        <div class="card portal-card" onclick="app.showRecruiterPortal()">
-          <div class="portal-icon"></div>
-          <h2>Recruiter Portal</h2>
-          <p>Upload JDs and rank candidates</p>
+
+        <!-- Candidates -->
+        <div class="journey-step">
+          <div class="step-marker" onclick="showRecruiterAnimation()">
+            <img src="/static/recruiter-icon-v2.jpg" alt="Recruiter" class="journey-icon-img"
+              style="width: 65px; height: 65px; border-radius: 50%; object-fit: cover;">
+          </div>
+          <div class="step-content" onclick="showRecruiterAnimation()">
+            <div class="step-title">Candidates</div>
+            <div class="step-desc">Upload resumes and let AI rank the best candidates for your roles.</div>
+          </div>
         </div>
-        <div class="card portal-card" onclick="window.location.href='/interviews/status'">
-          <div class="portal-icon"></div>
-          <h2>HR Dashboard</h2>
-          <p>View all interviews & meeting links</p>
+
+        <!-- Dashboard -->
+        <div class="journey-step">
+          <div class="step-marker" onclick="showHrAnimation()">
+            <img src="/static/hr-icon.jpg" alt="HR Dashboard" class="journey-icon-img"
+              style="width: 65px; height: 65px; border-radius: 50%; object-fit: cover;">
+          </div>
+          <div class="step-content" onclick="showHrAnimation()">
+            <div class="step-title">Dashboard</div>
+            <div class="step-desc">Track interviews, view hiring status, and manage decisions.</div>
+          </div>
         </div>
+
       </div>
     </div>
 
-    <!-- Admin Portal -->
-    <div id="admin-portal" class="hidden">
-      <button onclick="app.showLanding()" class="back-btn">← Back to Home</button>
-
-      <div class="card">
-        <h3>Upload Resumes</h3>
-        <form id="admin-upload-form">
-          <div class="file-upload-area">
-            <input type="file" id="resume-files" multiple accept=".pdf,.docx" required>
-            <p>Drag & drop resumes or click to select</p>
-          </div>
-          <button type="submit" class="btn">Upload</button>
-        </form>
-        <div id="admin-output" style="margin-top: 1rem;"></div>
-      </div>
-
-      <div class="card">
-        <h3>System Maintenance</h3>
-        <button id="init-db-btn" class="btn btn-secondary">Initialize Database</button>
-        <div id="init-output" style="margin-top: 0.5rem;"></div>
-      </div>
-    </div>
-
-    <!-- Recruiter Portal -->
-    <div id="recruiter-portal" class="hidden">
-      <button onclick="app.showLanding()" class="back-btn">← Back to Home</button>
-
-      <div class="card">
-        <h3>Upload Job Description</h3>
-        <form id="jd-upload-form">
-          <div class="form-group">
-            <label for="jd-file">Upload</label>
-            <input type="file" id="jd-file" accept=".pdf" required>
-          </div>
-
-          <div class="form-group">
-            <label for="top-k-select">Number of Candidates</label>
-            <select id="top-k-select" onchange="app.handleTopKChange()">
-              <option value="custom" selected>Enter manually</option>
-              <option value="all">ALL</option>
-            </select>
-          </div>
-
-          <div class="form-group" id="custom-top-k-group">
-            <label for="top-k-input">Enter Number</label>
-            <input type="number" id="top-k-input" min="1" max="100" value="5" placeholder="e.g., 5">
-          </div>
-
-          <button type="submit" class="btn">Find Match</button>
-        </form>
-        <div id="jd-output" style="margin-top: 1rem;"></div>
-      </div>
-
-      <!-- Hidden input to store JD database ID -->
-      <input type="hidden" id="jd-database-id" />
-
-      <div id="results-area" class="hidden" style="margin-top: 2rem;">
-        <h3>Ranking Results</h3>
-        <table class="results-table">
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Candidate Name</th>
-              <th>Match Score</th>
-              <th>File</th>
-            </tr>
-          </thead>
-          <tbody id="results-body">
-            <!-- Results will be injected here -->
-          </tbody>
-        </table>
-      </div>
-    </div>
+    <!-- Portals moved to separate pages -->
 
   </div>
 
@@ -150,7 +144,7 @@
 
       if (!token) {
         // Redirect to login if not authenticated
-        window.location.href = '/static/login.html';
+        window.location.href = '/login';
         return;
       }
 
@@ -167,8 +161,106 @@
       document.cookie = 'access_token=; path=/; max-age=0';
       window.location.href = '/static/login.html';
     }
+
+    // Show admin animation modal
+    function showAdminAnimation() {
+      const modal = document.getElementById('adminAnimationModal');
+      const animationContainer = document.getElementById('adminLottieAnimation');
+
+      // Show modal
+      modal.style.display = 'flex';
+
+      // Load and play Lottie animation
+      const animation = lottie.loadAnimation({
+        container: animationContainer,
+        renderer: 'svg',
+        loop: false,
+        autoplay: true,
+        path: '/static/admin.json'
+      });
+
+      // Navigate to admin portal after animation completes
+      animation.addEventListener('complete', function () {
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 300);
+      });
+    }
+
+    // Show recruiter animation modal
+    function showRecruiterAnimation() {
+      const modal = document.getElementById('recruiterAnimationModal');
+      const animationContainer = document.getElementById('recruiterLottieAnimation');
+
+      // Show modal
+      modal.style.display = 'flex';
+
+      // Load and play Lottie animation
+      const animation = lottie.loadAnimation({
+        container: animationContainer,
+        renderer: 'svg',
+        loop: false,
+        autoplay: true,
+        path: '/static/recruiter.json'
+      });
+
+      // Navigate to recruiter portal after animation completes
+      animation.addEventListener('complete', function () {
+        setTimeout(() => {
+          window.location.href = '/recruiter';
+        }, 300);
+      });
+    }
+
+    // Show HR animation modal
+    function showHrAnimation() {
+      const modal = document.getElementById('hrAnimationModal');
+      const animationContainer = document.getElementById('hrLottieAnimation');
+
+      // Show modal
+      modal.style.display = 'flex';
+
+      // Load and play Lottie animation
+      const animation = lottie.loadAnimation({
+        container: animationContainer,
+        renderer: 'svg',
+        loop: false,
+        autoplay: true,
+        path: '/static/hr.json'
+      });
+
+      // Navigate to HR dashboard after animation completes
+      animation.addEventListener('complete', function () {
+        setTimeout(() => {
+          window.location.href = '/hr';
+        }, 300);
+      });
+    }
   </script>
+
+  <!-- Animation Modal -->
+  <div id="adminAnimationModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; justify-content: center; align-items: center;">
+    <div id="adminLottieAnimation" style="width: 400px; height: 400px;"></div>
+  </div>
+
+  <!-- Recruiter Animation Modal -->
+  <div id="recruiterAnimationModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; justify-content: center; align-items: center;">
+    <div id="recruiterLottieAnimation" style="width: 400px; height: 400px;"></div>
+  </div>
+
+  <!-- HR Animation Modal -->
+  <div id="hrAnimationModal"
+    style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.8); z-index: 9999; justify-content: center; align-items: center;">
+    <div id="hrLottieAnimation" style="width: 400px; height: 400px;"></div>
+  </div>
+
+  <!-- Lottie Player Script -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+
   <script src="/static/app.js"></script>
+
 </body>
 
 </html>

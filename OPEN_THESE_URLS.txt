@@ -1,0 +1,23 @@
+HIRING APP — USE PORT 8001 (NOT 8000)
+=====================================
+
+1. Double-click: RUN_HIRING_SERVER.bat
+
+2. Open in browser:
+
+   Health check (must show hiring-main):
+   http://127.0.0.1:8001/api/health
+
+   Login:
+   http://127.0.0.1:8001/login
+
+   Admin / JD upload:
+   http://127.0.0.1:8001/admin
+
+3. If you open port 8000 by habit:
+   http://127.0.0.1:8000/api/health
+   will show a JSON message telling you to use 8001.
+
+Do NOT use:
+  python manage.py runserver
+  (that is Django on 8000 — wrong app)

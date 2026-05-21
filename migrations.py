@@ -9,10 +9,59 @@ def init_db():
         # 1. Enable pgvector extension
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         
+        # 1.5. Create tenants and clients tables
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS tenants (
+                id UUID PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                domain VARCHAR(255),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """)
+        
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS clients (
+                id UUID PRIMARY KEY,
+                tenant_id UUID REFERENCES tenants(id),
+                name VARCHAR(255) UNIQUE NOT NULL,
+                industry VARCHAR(255),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """)
+
+        # Seed default tenant and client
+        cur.execute("""
+            INSERT INTO tenants (id, name, domain) 
+            VALUES ('23cd7026-c85b-4f38-ad2d-bcd09cbc487c', 'Default Agency', 'default.agency')
+            ON CONFLICT (id) DO NOTHING;
+        """)
+        
+        cur.execute("""
+            INSERT INTO clients (id, tenant_id, name, industry) 
+            VALUES ('60e80ea2-ae7f-46d6-b30d-f73293036729', '23cd7026-c85b-4f38-ad2d-bcd09cbc487c', 'Default Client', 'Technology')
+            ON CONFLICT (id) DO NOTHING;
+        """)
+
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS candidates (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT,
+                full_name TEXT,
+                candidate_name TEXT,
+                email TEXT,
+                phone TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+        """)
+
         # 2. Create memories table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id UUID PRIMARY KEY,
+                client_id UUID REFERENCES clients(id),
                 type TEXT NOT NULL,
                 title TEXT,
                 text TEXT,
@@ -23,6 +72,25 @@ def init_db():
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
         """)
+
+        # Ensure client_id column exists on memories (if table was already created in a previous database state)
+        cur.execute("""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='memories' AND column_name='client_id') THEN 
+                    ALTER TABLE memories ADD COLUMN client_id UUID REFERENCES clients(id);
+                    CREATE INDEX IF NOT EXISTS idx_memories_client_id ON memories(client_id);
+                END IF; 
+            END $$;
+        """)
+
+        # Backfill existing memories with type='job' to Default Client
+        cur.execute("""
+            UPDATE memories 
+            SET client_id = '60e80ea2-ae7f-46d6-b30d-f73293036729'
+            WHERE type = 'job' AND client_id IS NULL;
+        """)
+
         
         # 3. Create resumes table
         cur.execute("""
@@ -322,6 +390,124 @@ def init_db():
                     ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'recruiter';
                 END IF;
             END $$;
+        """)
+
+        # 18. Add username column for legacy users tables that only have email
+        cur.execute("""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='username') THEN 
+                    ALTER TABLE users ADD COLUMN username VARCHAR(50);
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            UPDATE users SET username = email
+            WHERE username IS NULL AND email IS NOT NULL;
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)
+            WHERE username IS NOT NULL;
+        """)
+
+        # 19. Add email and tenant_id to users for agency signup/login
+        cur.execute("""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email') THEN 
+                    ALTER TABLE users ADD COLUMN email VARCHAR(255);
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='tenant_id') THEN 
+                    ALTER TABLE users ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            UPDATE users SET email = username
+            WHERE email IS NULL AND username IS NOT NULL;
+        """)
+        cur.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)
+            WHERE email IS NOT NULL;
+        """)
+
+        # 20. Align resumes table with upload pipeline (older DBs may lack these columns)
+        for col, col_type in [
+            ("candidate_id", "UUID"),
+            ("file_name", "TEXT"),
+            ("raw_text", "TEXT"),
+            ("structured_data", "JSONB"),
+            ("candidate_name", "TEXT"),
+            ("email", "TEXT"),
+            ("phone", "TEXT"),
+            ("type", "TEXT"),
+            ("title", "TEXT"),
+            ("text", "TEXT"),
+            ("metadata", "JSONB"),
+            ("canonical_json", "JSONB"),
+            ("created_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()"),
+            ("updated_at", "TIMESTAMP WITH TIME ZONE DEFAULT NOW()"),
+        ]:
+            cur.execute(
+                f"""
+                DO $$ BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_name = 'resumes' AND column_name = '{col}'
+                    ) THEN
+                        ALTER TABLE resumes ADD COLUMN {col} {col_type};
+                    END IF;
+                END $$;
+                """
+            )
+        cur.execute("""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'resumes' AND column_name = 'embedding'
+                ) THEN
+                    ALTER TABLE resumes ADD COLUMN embedding vector(768);
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            UPDATE resumes SET type = 'resume' WHERE type IS NULL;
+        """)
+        cur.execute("""
+            DO $$ BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'resumes' AND column_name = 'candidate_id'
+                ) THEN
+                    ALTER TABLE resumes ALTER COLUMN candidate_id SET DEFAULT gen_random_uuid();
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            DO $$ BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_name = 'candidate_outreach' AND column_name = 'email_sent'
+                ) THEN
+                    ALTER TABLE candidate_outreach ADD COLUMN email_sent BOOLEAN DEFAULT FALSE;
+                END IF;
+            END $$;
+        """)
+        cur.execute("""
+            UPDATE candidate_outreach SET email_sent = TRUE
+            WHERE email_sent IS NOT TRUE
+              AND email_subject IS DISTINCT FROM 'Application for role'
+              AND COALESCE(email_body, '') LIKE '%/acknowledge/%';
+        """)
+        cur.execute("""
+            UPDATE candidate_outreach SET email_sent = FALSE
+            WHERE email_subject = 'Application for role'
+               OR (email_sent IS NULL AND COALESCE(email_body, '') NOT LIKE '%/acknowledge/%');
+        """)
+        cur.execute("""
+            UPDATE candidate_outreach
+            SET sent_at = COALESCE(sent_at, created_at, NOW())
+            WHERE email_sent IS TRUE AND sent_at IS NULL;
         """)
 
         conn.commit()
