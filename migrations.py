@@ -1,6 +1,56 @@
 import psycopg2
 from db import get_connection
 
+
+def _ensure_users_auth_columns(cur) -> None:
+    """Idempotent: email/role/tenant_id required for POST /api/register."""
+    cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'email'
+            ) THEN
+                ALTER TABLE users ADD COLUMN email VARCHAR(255);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'role'
+            ) THEN
+                ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user';
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'tenant_id'
+            ) THEN
+                ALTER TABLE users ADD COLUMN tenant_id UUID REFERENCES tenants(id);
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'users' AND column_name = 'username'
+            ) THEN
+                ALTER TABLE users ADD COLUMN username VARCHAR(255);
+            END IF;
+        END $$;
+    """)
+    cur.execute("""
+        UPDATE users SET email = username
+        WHERE email IS NULL AND username IS NOT NULL;
+    """)
+    cur.execute("""
+        UPDATE users SET username = email
+        WHERE username IS NULL AND email IS NOT NULL;
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)
+        WHERE email IS NOT NULL;
+    """)
+    cur.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)
+        WHERE username IS NOT NULL;
+    """)
+
+
 def init_db():
     conn = get_connection()
     try:
@@ -172,11 +222,15 @@ def init_db():
         cur.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                username VARCHAR(50) UNIQUE NOT NULL,
+                username VARCHAR(255) UNIQUE NOT NULL,
                 password_hash VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                role VARCHAR(20) DEFAULT 'user',
+                tenant_id UUID REFERENCES tenants(id),
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             );
         """)
+        _ensure_users_auth_columns(cur)
 
         # 8. Add short_id to memories if not exists
         cur.execute("""
@@ -365,8 +419,6 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_hr_feedback_interview_id ON hr_feedback(interview_id);
         """)
 
-        conn.commit()
-
         # 16. Add user_id to memories and resumes for tracking uploader
         cur.execute("""
             DO $$ 
@@ -380,56 +432,8 @@ def init_db():
             END $$;
         """)
 
-        conn.commit()
-
-        # 17. Add role column to users table if not exists
-        cur.execute("""
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='role') THEN 
-                    ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'recruiter';
-                END IF;
-            END $$;
-        """)
-
-        # 18. Add username column for legacy users tables that only have email
-        cur.execute("""
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='username') THEN 
-                    ALTER TABLE users ADD COLUMN username VARCHAR(50);
-                END IF;
-            END $$;
-        """)
-        cur.execute("""
-            UPDATE users SET username = email
-            WHERE username IS NULL AND email IS NOT NULL;
-        """)
-        cur.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_username ON users(username)
-            WHERE username IS NOT NULL;
-        """)
-
-        # 19. Add email and tenant_id to users for agency signup/login
-        cur.execute("""
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='email') THEN 
-                    ALTER TABLE users ADD COLUMN email VARCHAR(255);
-                END IF;
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='users' AND column_name='tenant_id') THEN 
-                    ALTER TABLE users ADD COLUMN tenant_id UUID REFERENCES tenants(id);
-                END IF;
-            END $$;
-        """)
-        cur.execute("""
-            UPDATE users SET email = username
-            WHERE email IS NULL AND username IS NOT NULL;
-        """)
-        cur.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email ON users(email)
-            WHERE email IS NOT NULL;
-        """)
+        # 17–19. Repair users auth columns (fixes Render DBs that stopped mid-migration)
+        _ensure_users_auth_columns(cur)
 
         # 20. Align resumes table with upload pipeline (older DBs may lack these columns)
         for col, col_type in [
@@ -510,6 +514,7 @@ def init_db():
             WHERE email_sent IS TRUE AND sent_at IS NULL;
         """)
 
+        _ensure_users_auth_columns(cur)
         conn.commit()
         cur.close()
         print("Database initialized successfully.")

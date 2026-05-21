@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v20"
+SERVER_BUILD = "hiring-openai-v21"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
@@ -248,6 +248,17 @@ async def startup_event():
         print("[STARTUP] Database migrations completed.")
     except Exception as e:
         print(f"[STARTUP] WARNING: Database migration failed: {e}")
+        try:
+            from db import get_connection
+            conn = get_connection()
+            cur = conn.cursor()
+            migrations._ensure_users_auth_columns(cur)
+            conn.commit()
+            cur.close()
+            conn.close()
+            print("[STARTUP] Repaired users table (email/role/tenant_id).")
+        except Exception as repair_err:
+            print(f"[STARTUP] Users table repair failed: {repair_err}")
 
     # 2. Start Feedback Scheduler
     from feedback_scheduler import start_feedback_scheduler
