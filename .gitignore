@@ -45,4 +45,5 @@ htmlcov/
 # Credentials (keep template only)
 token.json
 credentials.json
+oauth_client.json
 node_modules/

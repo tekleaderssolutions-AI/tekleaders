@@ -25,89 +25,118 @@ from config import (
     GOOGLE_OAUTH_CLIENT_ID,
     GOOGLE_OAUTH_CLIENT_SECRET,
     GOOGLE_OAUTH_REFRESH_TOKEN,
+    GOOGLE_OAUTH_CLIENT_PATH,
+    CALENDAR_AUTH_MODE,
 )
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",  # Check availability
     "https://www.googleapis.com/auth/calendar.events"    # Create events
 ]
-TOKEN_PATH = Path('token.json')
+TOKEN_PATH = Path("token.json")
+OAUTH_CLIENT_PATH = Path(GOOGLE_OAUTH_CLIENT_PATH or "oauth_client.json")
 
 
-def _get_oauth_credentials():
-    """
-    Get installed-app OAuth credentials, refreshing or prompting for auth if needed.
-    Saves token to token.json for reuse.
-    """
-    creds = None
-    credentials_path = Path('credentials.json')
-    
-    # Load existing token if available
-    if TOKEN_PATH.exists():
-        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
-    
-    # Refresh or obtain new credentials
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
-            if not credentials_path.exists():
-                raise FileNotFoundError(f"Missing OAuth credentials: {credentials_path}. Please set up OAuth first.")
-            flow = InstalledAppFlow.from_client_secrets_file(str(credentials_path), SCOPES)
-            creds = flow.run_local_server(port=0)
-        
-        # Save credentials for future use
-        with open(TOKEN_PATH, 'w') as token_file:
-            token_file.write(creds.to_json())
-    
-    return creds
-
-
-def get_calendar_service():
-    """
-    Calendar API: OAuth (token.json or env refresh token) first; service account only if JSON key exists.
-    """
-    creds_path = Path(GOOGLE_CALENDAR_CREDENTIALS_PATH or "credentials.json")
-    oauth_env = bool(
+def _oauth_env_configured() -> bool:
+    return bool(
         (GOOGLE_OAUTH_REFRESH_TOKEN or "").strip()
         and (GOOGLE_OAUTH_CLIENT_ID or "").strip()
         and (GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
     )
 
-    if oauth_env or TOKEN_PATH.exists() or creds_path.exists():
-        try:
-            import json as _json
 
-            if creds_path.exists():
-                peek = _json.loads(creds_path.read_text(encoding="utf-8"))
-                if peek.get("type") == "service_account":
-                    raise ValueError("skip SA when OAuth expected")
+def calendar_auth_is_service_account() -> bool:
+    """True when using SA (Meet links often missing). False when OAuth as recruit@."""
+    mode = (CALENDAR_AUTH_MODE or "auto").lower()
+    if mode == "oauth":
+        return False
+    if mode == "service_account":
+        return True
+    if _oauth_env_configured() or TOKEN_PATH.exists():
+        return False
+    return _credentials_are_service_account()
+
+
+def _get_oauth_credentials():
+    """
+    OAuth as recruit@ — required for Google Meet on calendar events.
+    Uses .env refresh token (Render) or oauth_client.json + token.json (local).
+    """
+    if _oauth_env_configured():
+        creds = Credentials(
+            None,
+            refresh_token=(GOOGLE_OAUTH_REFRESH_TOKEN or "").strip(),
+            token_uri="https://oauth2.googleapis.com/token",
+            client_id=(GOOGLE_OAUTH_CLIENT_ID or "").strip(),
+            client_secret=(GOOGLE_OAUTH_CLIENT_SECRET or "").strip(),
+            scopes=SCOPES,
+        )
+        creds.refresh(Request())
+        return creds
+
+    creds = None
+    if TOKEN_PATH.exists():
+        creds = Credentials.from_authorized_user_file(str(TOKEN_PATH), SCOPES)
+
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            if not OAUTH_CLIENT_PATH.exists():
+                raise FileNotFoundError(
+                    f"Missing {OAUTH_CLIENT_PATH}. Run: python setup_calendar_oauth.py"
+                )
+            flow = InstalledAppFlow.from_client_secrets_file(str(OAUTH_CLIENT_PATH), SCOPES)
+            creds = flow.run_local_server(port=0)
+        TOKEN_PATH.write_text(creds.to_json(), encoding="utf-8")
+
+    return creds
+
+
+def _get_service_account_calendar_service():
+    creds_path = Path(GOOGLE_CALENDAR_CREDENTIALS_PATH or "credentials.json")
+    if not creds_path.exists():
+        raise FileNotFoundError(f"Missing service account JSON: {creds_path}")
+    peek = json.loads(creds_path.read_text(encoding="utf-8"))
+    if peek.get("type") != "service_account":
+        raise ValueError(f"{creds_path} is not a service account JSON")
+    credentials = service_account.Credentials.from_service_account_file(
+        str(creds_path),
+        scopes=[
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/calendar.events",
+        ],
+    )
+    return build("calendar", "v3", credentials=credentials)
+
+
+def get_calendar_service():
+    """
+    Prefer OAuth (recruit@) for Google Meet. Service account is fallback for free/busy only.
+    Set CALENDAR_AUTH_MODE=oauth in .env after running setup_calendar_oauth.py.
+    """
+    mode = (CALENDAR_AUTH_MODE or "auto").lower()
+    try_oauth = mode == "oauth" or (
+        mode == "auto" and (_oauth_env_configured() or TOKEN_PATH.exists())
+    )
+
+    if try_oauth:
+        try:
             creds = _get_oauth_credentials()
+            print("[CALENDAR] Auth: OAuth (recruit@) — Google Meet enabled")
             return build("calendar", "v3", credentials=creds)
         except Exception as oauth_error:
-            if creds_path.exists():
-                peek = _json.loads(creds_path.read_text(encoding="utf-8"))
-                if peek.get("type") != "service_account":
-                    raise Exception(f"OAuth calendar auth failed: {oauth_error}") from oauth_error
-            print(f"OAuth flow failed, attempting service account: {oauth_error}")
+            if mode == "oauth":
+                raise Exception(
+                    f"Calendar OAuth required for Meet links. Run setup_calendar_oauth.py. ({oauth_error})"
+                ) from oauth_error
+            print(f"[CALENDAR] OAuth failed ({oauth_error}); falling back to service account")
 
-    if creds_path.exists():
-        import json as _json
-
-        peek = _json.loads(creds_path.read_text(encoding="utf-8"))
-        if peek.get("type") == "service_account":
-            credentials = service_account.Credentials.from_service_account_file(
-                str(creds_path),
-                scopes=[
-                    "https://www.googleapis.com/auth/calendar.readonly",
-                    "https://www.googleapis.com/auth/calendar.events",
-                ],
-            )
-            return build("calendar", "v3", credentials=credentials)
-
-    raise Exception(
-        "No calendar credentials. Use OAuth (org blocks service account keys) — see GOOGLE_CALENDAR_SETUP.md."
+    print(
+        "[CALENDAR] Auth: service account — Meet may be missing. "
+        "Set CALENDAR_AUTH_MODE=oauth after setup_calendar_oauth.py"
     )
+    return _get_service_account_calendar_service()
 
 
 def get_available_slots(date: datetime, num_slots: int = 3, calendar_email: str = None) -> List[Dict[str, Any]]:
@@ -372,7 +401,7 @@ def create_calendar_event(
             dict.fromkeys(e.strip().lower() for e in (attendees_emails or []) if e and e.strip())
         )
 
-        use_sa = _credentials_are_service_account()
+        use_sa = calendar_auth_is_service_account()
         if use_sa and unique_attendees:
             guest_lines = "\n".join(f"- {e}" for e in unique_attendees)
             description = (

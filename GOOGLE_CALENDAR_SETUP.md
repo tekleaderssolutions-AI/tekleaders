@@ -49,7 +49,32 @@ To get automatic Google Calendar invites to guests from the API, use **Option B 
 
 ---
 
-### Option B — OAuth as recruit@tekleaders.io (use when SA keys are blocked)
+### Option B — OAuth as recruit@tekleaders.io (**required for Google Meet links**)
+
+Service accounts usually **cannot** add a working **Google Meet** link on recruit@ events. Use OAuth for interview confirmation.
+
+**Quick setup (local, ~5 minutes):**
+
+1. GCP → **Credentials** → **OAuth client ID** → **Desktop app** → download JSON.
+2. Save as **`oauth_client.json`** in the `hiring` folder (keep **`credentials.json`** as the service account file).
+3. Run:
+   ```bash
+   cd hiring
+   python setup_calendar_oauth.py
+   ```
+   Sign in as **recruit@tekleaders.io** when the browser opens.
+4. Copy the printed lines into **`.env`**:
+   ```env
+   CALENDAR_AUTH_MODE=oauth
+   GOOGLE_OAUTH_CLIENT_ID=...
+   GOOGLE_OAUTH_CLIENT_SECRET=...
+   GOOGLE_OAUTH_REFRESH_TOKEN=...
+   ```
+5. Restart the server. Approve an interview — email and calendar should show a **meet.google.com** link.
+
+---
+
+### Option B (manual) — OAuth as recruit@tekleaders.io (legacy steps)
 
 1. **APIs & Services** → **OAuth consent screen** → configure (Internal for Workspace if available).
 2. **Credentials** → **+ Create credentials** → **OAuth client ID**.

@@ -228,6 +228,8 @@ async def api_health():
         "interviewer_email": INTERVIEWER_EMAIL,
         "hr_interviewer_email": HR_INTERVIEWER_EMAIL,
         "calendar_email": CALENDAR_EMAIL,
+        "calendar_auth_mode": CALENDAR_AUTH_MODE,
+        "calendar_meet_via_oauth": not calendar_auth_is_service_account(),
         "signup": "v2",
         "jd_ai_provider": "openai",
         "jd_service_version": "jd-openai-v4",

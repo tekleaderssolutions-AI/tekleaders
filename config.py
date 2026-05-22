@@ -157,6 +157,9 @@ GOOGLE_CALENDAR_CREDENTIALS_PATH = get_env("GOOGLE_CALENDAR_CREDENTIALS_PATH", "
 GOOGLE_OAUTH_CLIENT_ID = get_env("GOOGLE_OAUTH_CLIENT_ID", "")
 GOOGLE_OAUTH_CLIENT_SECRET = get_env("GOOGLE_OAUTH_CLIENT_SECRET", "")
 GOOGLE_OAUTH_REFRESH_TOKEN = get_env("GOOGLE_OAUTH_REFRESH_TOKEN", "")
+# auto | oauth (recruit@ — required for reliable Google Meet) | service_account
+CALENDAR_AUTH_MODE = (get_env("CALENDAR_AUTH_MODE", "auto") or "auto").strip().lower()
+GOOGLE_OAUTH_CLIENT_PATH = get_env("GOOGLE_OAUTH_CLIENT_PATH", "oauth_client.json")
 INTERVIEW_DURATION_MINUTES = int(get_env("INTERVIEW_DURATION_MINUTES", "60"))
 
 # BASE_URL: Must be publicly accessible for email acknowledgement links to work
