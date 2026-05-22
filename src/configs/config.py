@@ -49,7 +49,7 @@ COMPANY_NAME = get_env("COMPANY_NAME", "Tek Leaders")
 
 # Google Calendar Configuration
 GOOGLE_CALENDAR_CREDENTIALS_PATH = get_env("GOOGLE_CALENDAR_CREDENTIALS_PATH", "credentials.json")
-INTERVIEWER_EMAIL = get_env("INTERVIEWER_EMAIL", "akkireddy41472@gmail.com")
+INTERVIEWER_EMAIL = get_env("INTERVIEWER_EMAIL", "recruit@tekleaders.io")
 INTERVIEW_DURATION_MINUTES = int(get_env("INTERVIEW_DURATION_MINUTES", "60"))
 
 # BASE_URL: Must be publicly accessible for email acknowledgement links to work

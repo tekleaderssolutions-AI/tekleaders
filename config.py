@@ -83,9 +83,29 @@ COMPANY_NAME = get_env("COMPANY_NAME", "Tek Leaders")
 
 # Recruiting mailbox + calendar (technical & HR rounds use the same account)
 RECRUIT_EMAIL = (get_env("RECRUIT_EMAIL", FROM_EMAIL) or FROM_EMAIL or "recruit@tekleaders.io").strip().lower()
-INTERVIEWER_EMAIL = (get_env("INTERVIEWER_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
-HR_INTERVIEWER_EMAIL = (get_env("HR_INTERVIEWER_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
-CALENDAR_EMAIL = (get_env("CALENDAR_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
+
+# Legacy personal Gmail — override so Render/old .env cannot keep routing interviewer mail here
+_LEGACY_INTERVIEWER_EMAILS = frozenset({
+    "akkireddy41473@gmail.com",
+    "akkireddy41472@gmail.com",
+})
+
+
+def _recruit_mailbox(env_name: str, default: str | None = None) -> str:
+    """Resolve interviewer/calendar mailbox; map deprecated Gmail to recruit@."""
+    fallback = (default or RECRUIT_EMAIL or "recruit@tekleaders.io").strip().lower()
+    raw = (get_env(env_name, fallback) or fallback).strip().lower()
+    if raw in _LEGACY_INTERVIEWER_EMAILS:
+        print(
+            f"[CONFIG] {env_name}={raw} is deprecated; using {RECRUIT_EMAIL} instead."
+        )
+        return RECRUIT_EMAIL
+    return raw
+
+
+INTERVIEWER_EMAIL = _recruit_mailbox("INTERVIEWER_EMAIL")
+HR_INTERVIEWER_EMAIL = _recruit_mailbox("HR_INTERVIEWER_EMAIL")
+CALENDAR_EMAIL = _recruit_mailbox("CALENDAR_EMAIL")
 
 # CC on every outbound email (comma-separated override in EMAIL_CC_LIST)
 _EMAIL_CC_DEFAULT = (

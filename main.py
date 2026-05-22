@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v22"
+SERVER_BUILD = "hiring-openai-v23"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
@@ -218,10 +218,16 @@ async def api_health():
 
     load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
+    from config import INTERVIEWER_EMAIL, HR_INTERVIEWER_EMAIL, CALENDAR_EMAIL, FROM_EMAIL
+
     return {
         "status": "ok",
         "app": "hiring-main",
         "server_build": SERVER_BUILD,
+        "from_email": FROM_EMAIL,
+        "interviewer_email": INTERVIEWER_EMAIL,
+        "hr_interviewer_email": HR_INTERVIEWER_EMAIL,
+        "calendar_email": CALENDAR_EMAIL,
         "signup": "v2",
         "jd_ai_provider": "openai",
         "jd_service_version": "jd-openai-v4",
@@ -274,6 +280,16 @@ async def startup_event():
         ))
     except Exception as e:
         print(f"[STARTUP] JD AI config check failed: {e}")
+
+    try:
+        from config import INTERVIEWER_EMAIL, HR_INTERVIEWER_EMAIL, CALENDAR_EMAIL, FROM_EMAIL
+
+        print(
+            f"[STARTUP] Mail: from={FROM_EMAIL} interviewer={INTERVIEWER_EMAIL} "
+            f"hr_interviewer={HR_INTERVIEWER_EMAIL} calendar={CALENDAR_EMAIL}"
+        )
+    except Exception as e:
+        print(f"[STARTUP] Mail config check failed: {e}")
 
 
 # Serve the minimal UI from ./static
