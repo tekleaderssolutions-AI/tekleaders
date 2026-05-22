@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v24"
+SERVER_BUILD = "hiring-openai-v25"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(

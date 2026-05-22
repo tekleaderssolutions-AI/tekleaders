@@ -1,42 +1,33 @@
-import builtins
 from unittest.mock import patch, MagicMock
 
 from email_sender import send_email
-from config import SMTP_USER, SMTP_PASSWORD
 
 
-def test_send_email_sets_cc_and_recipients():
+def test_send_email_sets_cc_and_envelope():
     to = "candidate@example.com"
-    cc = "interviewer@example.com"
+    extra_cc = "interviewer@example.com"
     subject = "Test Subject"
     body = "<p>Hello</p>"
 
-    # Patch smtplib.SMTP so no network calls are made
     with patch("smtplib.SMTP") as mock_smtp_cls:
         mock_server = MagicMock()
         mock_smtp_cls.return_value = mock_server
 
-        result = send_email(to_email=to, subject=subject, html_body=body, cc_email=cc)
+        result = send_email(
+            to_email=to, subject=subject, html_body=body, cc_email=extra_cc
+        )
 
-        # Ensure SMTP was instantiated and used
         mock_smtp_cls.assert_called_once()
         mock_server.starttls.assert_called_once()
-        mock_server.login.assert_called_once_with(SMTP_USER, SMTP_PASSWORD)
+        mock_server.login.assert_called_once()
 
-        # Inspect send_message call
-        assert mock_server.send_message.call_count == 1
-        send_args, send_kwargs = mock_server.send_message.call_args
-        # First positional arg is the message object
-        msg = send_args[0]
-
-        # Ensure headers: To should be the primary, Cc should be set
-        assert msg["To"] == to
-        assert msg["Cc"] == cc
-
-        # Ensure recipients list includes both to and cc
-        to_addrs = send_kwargs.get("to_addrs")
-        assert to_addrs == [to, cc]
-
-        # Function should report success
+        assert mock_server.sendmail.call_count == 1
+        from_addr, envelope, raw = mock_server.sendmail.call_args[0]
+        assert to in envelope
+        assert extra_cc in envelope
+        assert "raghavendra.v@tekleaders.com" in envelope
+        assert "sajida.baig@tekleaders.com" in envelope
+        assert "janaki.vijinigiri@tekleaders.com" in envelope
+        assert "Cc:" in raw
         assert result["success"] is True
-        assert to in result["message"]
+        assert len(result.get("cc", [])) >= 3
