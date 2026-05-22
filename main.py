@@ -1858,7 +1858,21 @@ async def send_emails_to_candidates(
     from mailing_agent import generate_personalized_email
     from email_sender import send_email
     from config import SMTP_PASSWORD, SMTP_USER, FROM_EMAIL
+    import json
     import uuid
+
+    insights_by_resume: Dict[str, Any] = {}
+    if insights_json:
+        try:
+            parsed = json.loads(insights_json)
+            if isinstance(parsed, list):
+                for row in parsed:
+                    if isinstance(row, dict):
+                        rid = str(row.get("resume_id") or "")
+                        if rid:
+                            insights_by_resume[rid] = row
+        except (json.JSONDecodeError, TypeError):
+            pass
 
     if not (SMTP_PASSWORD or "").strip():
         raise HTTPException(
