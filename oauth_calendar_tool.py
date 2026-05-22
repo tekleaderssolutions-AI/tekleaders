@@ -16,7 +16,7 @@ SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 
 # Defaults - override with args or environment
 HR_EMAIL = os.environ.get("HR_EMAIL", "srikanthtata8374@gmail.com")
-INTERVIEWER_EMAIL = os.environ.get("INTERVIEWER_EMAIL", "akkireddy41473@gmail.com")
+INTERVIEWER_EMAIL = os.environ.get("CALENDAR_EMAIL", os.environ.get("INTERVIEWER_EMAIL", "recruit@tekleaders.io"))
 
 TOKEN_PATH = 'token.json'
 CREDENTIALS_PATH = 'credentials.json'

@@ -36,7 +36,9 @@ SCOPES = [
 TOKEN_PATH = Path('token.json')
 CREDENTIALS_PATH = Path('credentials.json')
 
-DEFAULT_INTERVIEWER = os.environ.get('INTERVIEWER_EMAIL', 'akkireddy41473@gmail.com')
+from dotenv import load_dotenv
+load_dotenv()
+DEFAULT_INTERVIEWER = os.environ.get('CALENDAR_EMAIL', os.environ.get('INTERVIEWER_EMAIL', 'recruit@tekleaders.io'))
 
 
 def get_service(token_path: Path = TOKEN_PATH, credentials_path: Path = CREDENTIALS_PATH):

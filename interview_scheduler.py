@@ -15,7 +15,15 @@ from interview_email_template import (
     generate_reschedule_proposal_email
 )
 from email_sender import send_email
-from config import BASE_URL, COMPANY_NAME, INTERVIEWER_EMAIL, HR_INTERVIEWER_EMAIL, INTERVIEW_DURATION_MINUTES
+from config import (
+    BASE_URL,
+    COMPANY_NAME,
+    INTERVIEWER_EMAIL,
+    HR_INTERVIEWER_EMAIL,
+    CALENDAR_EMAIL,
+    INTERVIEW_DURATION_MINUTES,
+)
+from link_auth import verify_candidate_token
 def _generate_default_slots(interview_date: datetime, num_slots: int) -> List[Dict[str, datetime]]:
     """
     Build fallback slots (10:00, 11:30, 2:00, 3:30) when calendar API fails.
@@ -427,7 +435,12 @@ def schedule_interviews_for_interested_candidates(
         conn.close()
 
 
-def confirm_interview_slot(interview_id: str, slot_id: str, outreach_id: str | None = None) -> Dict[str, Any]:
+def confirm_interview_slot(
+    interview_id: str,
+    slot_id: str,
+    outreach_id: str | None = None,
+    token: str | None = None,
+) -> Dict[str, Any]:
     """
     Confirm a candidate's selected interview time slot.
     Automatically creates a Google Calendar event and blocks both participants' calendars.
@@ -469,11 +482,27 @@ def confirm_interview_slot(interview_id: str, slot_id: str, outreach_id: str | N
         
         if status == 'confirmed':
             return {"error": "Interview already confirmed"}
-        
-        # Ensure the requester is the candidate who received the outreach email
-        if outreach_id is not None:
-            if outreach_id != outreach_id_db:
-                return {"error": "Unauthorized: outreach token mismatch"}
+
+        if not outreach_id or not token:
+            return {
+                "error": "Invalid link. Please use the interview email sent to you — only the invited candidate can select a time slot.",
+            }
+
+        if str(outreach_id) != str(outreach_id_db):
+            return {"error": "Unauthorized: this interview invitation was not sent to you."}
+
+        cur.execute(
+            "SELECT candidate_email FROM candidate_outreach WHERE id = %s",
+            [outreach_id],
+        )
+        outreach_row = cur.fetchone()
+        if not outreach_row:
+            return {"error": "Outreach record not found"}
+        outreach_email = (outreach_row[0] or "").strip()
+        if not verify_candidate_token(outreach_id, outreach_email, token):
+            return {
+                "error": "Unauthorized: only the candidate who received this email can confirm a slot.",
+            }
 
         if slot_id not in proposed_slots or proposed_slots[slot_id] is None:
             return {"error": "Invalid slot selection"}
@@ -505,7 +534,11 @@ def confirm_interview_slot(interview_id: str, slot_id: str, outreach_id: str | N
         if not cand_row:
             return {"error": "Candidate not found"}
         candidate_name, candidate_email = cand_row
-        
+        if (candidate_email or "").strip().lower() != outreach_email.lower():
+            return {
+                "error": "Unauthorized: slot confirmation must be completed by the invited candidate only.",
+            }
+
         cur.execute(
             "SELECT title, canonical_json FROM memories WHERE id = %s",
             [jd_id]
@@ -634,8 +667,8 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
             event_description = f"Scheduled interview for {candidate_name} for the {jd_title} position."
             
             # Use HR interviewer email for Round 2, otherwise use regular interviewer
-            organizer = HR_INTERVIEWER_EMAIL if (interview_round and interview_round == 2) else INTERVIEWER_EMAIL
-            
+            organizer = CALENDAR_EMAIL
+
             event = create_calendar_event(
                 summary=event_summary,
                 description=event_description,
@@ -803,7 +836,7 @@ def _fetch_time_slots(date: datetime, num_slots: int = 3, calendar_email: str = 
     Args:
         date: Date to check
         num_slots: Number of slots needed
-        calendar_email: Calendar to check (defaults to INTERVIEWER_EMAIL)
+        calendar_email: Calendar to check (defaults to CALENDAR_EMAIL)
     
     Returns:
         List of slot dictionaries with start_time and end_time
@@ -828,7 +861,7 @@ def _find_diverse_time_slots(start_date: datetime, num_slots: int = 3, scan_days
         start_date: Starting date for search
         num_slots: Number of slots to return
         scan_days: Number of days to scan
-        calendar_email: Calendar to check availability (defaults to INTERVIEWER_EMAIL)
+        calendar_email: Calendar to check availability (defaults to CALENDAR_EMAIL)
     """
     collected_slots = []
     current_date = start_date
@@ -921,7 +954,7 @@ def schedule_hr_round_interview(original_interview_id: str, num_slots: int = 3) 
             start_date += timedelta(days=1)
             
         # For HR Round: Get multiple slots on the SAME day (different times)
-        time_slots = _fetch_time_slots(start_date, num_slots, calendar_email=HR_INTERVIEWER_EMAIL)
+        time_slots = _fetch_time_slots(start_date, num_slots, calendar_email=CALENDAR_EMAIL)
         
         if not time_slots:
             return {"success": False, "error": "No available time slots found"}

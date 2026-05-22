@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v21"
+SERVER_BUILD = "hiring-openai-v22"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
@@ -2031,8 +2031,27 @@ async def send_emails_to_candidates(
     }
 
 
+def _candidate_link_denied_html(message: str) -> str:
+    return f"""
+<!DOCTYPE html>
+<html>
+<head><title>Access denied - Tek Leaders</title>
+<style>
+  body {{ font-family: Arial, sans-serif; display: flex; justify-content: center;
+    align-items: center; min-height: 100vh; margin: 0; background: #f3f4f6; }}
+  .box {{ background: white; padding: 40px; border-radius: 10px; max-width: 480px;
+    text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }}
+  h1 {{ color: #dc2626; }}
+  p {{ color: #6b7280; line-height: 1.6; }}
+</style>
+</head>
+<body><div class="box"><h1>Unable to proceed</h1><p>{message}</p></div></body>
+</html>
+"""
+
+
 @app.get("/acknowledge/{outreach_id}")
-async def acknowledge_interest(outreach_id: str, response: str):
+async def acknowledge_interest(outreach_id: str, response: str, token: str | None = None):
     """
     Record candidate's acknowledgement (interested/not_interested).
     
@@ -2048,34 +2067,60 @@ async def acknowledge_interest(outreach_id: str, response: str):
     
     if response not in ['interested', 'not_interested']:
         raise HTTPException(status_code=400, detail="Invalid response")
-    
+
+    from link_auth import verify_candidate_token
+
     conn = get_connection()
     try:
         cur = conn.cursor()
-        
-        # Update acknowledgement and get JD info
         cur.execute(
             """
-            UPDATE candidate_outreach 
-            SET acknowledgement = %s, acknowledged_at = NOW(), updated_at = NOW()
+            SELECT candidate_name, jd_id, candidate_email, acknowledgement
+            FROM candidate_outreach
             WHERE id = %s
-            RETURNING candidate_name, jd_id
             """,
-            [response, outreach_id]
+            [outreach_id],
         )
-        
         row = cur.fetchone()
-        conn.commit()
-        cur.close()
-        
         if not row:
             raise HTTPException(status_code=404, detail="Outreach record not found")
+
+        candidate_name, jd_id, candidate_email, prior_ack = row
+        candidate_email = (candidate_email or "").strip()
+        if not candidate_email:
+            raise HTTPException(status_code=400, detail="Candidate email not on file")
+
+        if not verify_candidate_token(outreach_id, candidate_email, token):
+            return HTMLResponse(
+                status_code=403,
+                content=_candidate_link_denied_html(
+                    "Only the candidate who received this email can respond. "
+                    "Open the link from your own inbox, or contact recruiting."
+                ),
+            )
+
+        if prior_ack:
+            message = (
+                f"Your response was already recorded, {candidate_name or 'Candidate'}."
+            )
+            color = "#6b7280"
+        else:
+            cur.execute(
+                """
+                UPDATE candidate_outreach
+                SET acknowledgement = %s, acknowledged_at = NOW(), updated_at = NOW()
+                WHERE id = %s
+                """,
+                [response, outreach_id],
+            )
+            conn.commit()
         
-        candidate_name = row[0] or "Candidate"
-        jd_id = row[1]
-        
+        cur.close()
+
+        candidate_name = candidate_name or "Candidate"
+
         # Automatically schedule interview if candidate is interested
-        if response == 'interested':
+        if not prior_ack and response == 'interested':
             try:
                 from interview_scheduler import schedule_interview_for_single_candidate
                 
@@ -2111,7 +2156,7 @@ async def acknowledge_interest(outreach_id: str, response: str):
                 message = f"Thank you, {candidate_name}! We've recorded your interest and our team will contact you soon."
             
             color = "#10b981"
-        else:
+        elif not prior_ack:
             message = f"Thank you for your response, {candidate_name}. We appreciate your time."
             color = "#6b7280"
         
@@ -2171,7 +2216,12 @@ async def acknowledge_interest(outreach_id: str, response: str):
 
 
 @app.get("/confirm-interview/{interview_id}")
-async def confirm_interview(interview_id: str, slot: str, outreach_id: str | None = None):
+async def confirm_interview(
+    interview_id: str,
+    slot: str,
+    outreach_id: str | None = None,
+    token: str | None = None,
+):
     """
     Confirm a candidate's selected interview time slot.
     Automatically creates a Google Calendar event and sends final emails.
@@ -2179,7 +2229,8 @@ async def confirm_interview(interview_id: str, slot: str, outreach_id: str | Non
     Args:
         interview_id: UUID of the interview
         slot: Selected slot ID (slot1, slot2, or slot3)
-        outreach_id: Optional authorization token
+        outreach_id: Outreach record id (must match invited candidate)
+        token: Signed token from candidate email link
     
     Returns:
         HTML confirmation page with Meet link and event details
@@ -2188,7 +2239,7 @@ async def confirm_interview(interview_id: str, slot: str, outreach_id: str | Non
     from fastapi.responses import HTMLResponse
     
     try:
-        result = confirm_interview_slot(interview_id, slot, outreach_id)
+        result = confirm_interview_slot(interview_id, slot, outreach_id, token)
         
         if "error" in result:
             # Log error for debugging
@@ -2306,89 +2357,6 @@ async def schedule_interviews(
         raise HTTPException(status_code=400, detail=f"Invalid date format: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error scheduling interviews: {str(e)}")
-
-
-@app.get("/confirm-interview/{interview_id}")
-async def confirm_interview(interview_id: str, slot: str, outreach_id: str | None = None):
-    """
-    Confirm a candidate's selected interview time slot.
-    
-    Args:
-        interview_id: UUID of the interview
-        slot: Selected slot ID (slot1, slot2, or slot3)
-    
-    Returns:
-        HTML confirmation page
-    """
-    from interview_scheduler import confirm_interview_slot
-    from fastapi.responses import HTMLResponse
-    
-    try:
-        result = confirm_interview_slot(interview_id, slot, outreach_id)
-        
-        if "error" in result:
-            message = result["error"]
-            color = "#dc3545"
-            icon = "❌"
-        else:
-            slot_info = result.get("slot", {})
-            start_time = slot_info.get("start", "")
-            message = f"Your interview has been confirmed for {start_time}. We look forward to meeting you!"
-            color = "#28a745"
-            icon = "✅"
-        
-        html_content = f"""
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Interview Confirmation - Tek Leaders</title>
-    <style>
-        body {{
-            font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            margin: 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        }}
-        .container {{
-            background: white;
-            padding: 40px;
-            border-radius: 15px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-            text-align: center;
-            max-width: 500px;
-        }}
-        .icon {{
-            font-size: 64px;
-            margin-bottom: 20px;
-        }}
-        h1 {{
-            color: {color};
-            margin-bottom: 20px;
-        }}
-        p {{
-            color: #333;
-            line-height: 1.6;
-            font-size: 16px;
-        }}
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="icon">{icon}</div>
-        <h1>Interview Confirmation</h1>
-        <p>{message}</p>
-    </div>
-</body>
-</html>
-"""
-        
-        return HTMLResponse(content=html_content)
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error confirming interview: {str(e)}")
 
 
 @app.get("/interviews/action/{interview_id}/{action}")

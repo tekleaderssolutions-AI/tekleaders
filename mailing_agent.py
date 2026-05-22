@@ -11,6 +11,7 @@ from typing import Any, Dict, List
 from dotenv import load_dotenv
 
 from config import BASE_URL, COMPANY_NAME, OPENAI_API_KEY, OPENAI_CHAT_MODEL
+from link_auth import with_candidate_token
 
 _ENV_PATH = Path(__file__).resolve().parent / ".env"
 
@@ -75,9 +76,12 @@ def _build_html_email(
     candidate_name: str,
     email_body_text: str,
     outreach_id: str,
+    candidate_email: str,
 ) -> str:
-    interested_link = f"{BASE_URL}/acknowledge/{outreach_id}?response=interested"
-    not_interested_link = f"{BASE_URL}/acknowledge/{outreach_id}?response=not_interested"
+    interested_base = f"{BASE_URL}/acknowledge/{outreach_id}?response=interested"
+    not_interested_base = f"{BASE_URL}/acknowledge/{outreach_id}?response=not_interested"
+    interested_link = with_candidate_token(interested_base, outreach_id, candidate_email)
+    not_interested_link = with_candidate_token(not_interested_base, outreach_id, candidate_email)
     body_html = (email_body_text or "").replace("\n", "<br>")
 
     return f"""
@@ -205,11 +209,14 @@ Instructions:
             candidate_name=candidate_name,
             email_body_text=email_body_text,
             outreach_id=outreach_id,
+            candidate_email=candidate_email,
         )
         return {"subject": subject, "body": html_body}
     except Exception:
-        interested_link = f"{BASE_URL}/acknowledge/{outreach_id}?response=interested"
-        not_interested_link = f"{BASE_URL}/acknowledge/{outreach_id}?response=not_interested"
+        interested_base = f"{BASE_URL}/acknowledge/{outreach_id}?response=interested"
+        not_interested_base = f"{BASE_URL}/acknowledge/{outreach_id}?response=not_interested"
+        interested_link = with_candidate_token(interested_base, outreach_id, candidate_email)
+        not_interested_link = with_candidate_token(not_interested_base, outreach_id, candidate_email)
         skill_hint = ", ".join(skills[:3]) if skills else "your background"
         html_body = f"""
 <!DOCTYPE html>

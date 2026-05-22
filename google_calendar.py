@@ -6,6 +6,7 @@ Supports both service account (server-to-server) and installed-app OAuth flows.
 from datetime import datetime, timedelta
 from typing import List, Dict, Any
 from pathlib import Path
+import json
 import os
 import uuid
 from google.oauth2.credentials import Credentials
@@ -15,7 +16,14 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from config import GOOGLE_CALENDAR_CREDENTIALS_PATH, INTERVIEWER_EMAIL, INTERVIEW_DURATION_MINUTES
+from config import (
+    GOOGLE_CALENDAR_CREDENTIALS_PATH,
+    CALENDAR_EMAIL,
+    INTERVIEW_DURATION_MINUTES,
+    GOOGLE_OAUTH_CLIENT_ID,
+    GOOGLE_OAUTH_CLIENT_SECRET,
+    GOOGLE_OAUTH_REFRESH_TOKEN,
+)
 
 SCOPES = [
     "https://www.googleapis.com/auth/calendar.readonly",  # Check availability
@@ -55,32 +63,49 @@ def _get_oauth_credentials():
 
 def get_calendar_service():
     """
-    Create and return a Google Calendar API service instance.
-    Tries installed-app OAuth first, falls back to service account.
+    Calendar API: OAuth (token.json or env refresh token) first; service account only if JSON key exists.
     """
-    try:
-        # Try installed-app OAuth (desktop app flow with token.json)
-        if Path('credentials.json').exists():
-            try:
-                creds = _get_oauth_credentials()
-                service = build('calendar', 'v3', credentials=creds)
-                return service
-            except Exception as oauth_error:
-                print(f"OAuth flow failed, attempting service account: {oauth_error}")
-        
-        # Fall back to service account credentials
-        credentials = service_account.Credentials.from_service_account_file(
-            GOOGLE_CALENDAR_CREDENTIALS_PATH,
-            scopes=[
-                'https://www.googleapis.com/auth/calendar.readonly',
-                'https://www.googleapis.com/auth/calendar.events'
-            ]
-        )
-        
-        service = build('calendar', 'v3', credentials=credentials)
-        return service
-    except Exception as e:
-        raise Exception(f"Failed to create Calendar service: {str(e)}")
+    creds_path = Path(GOOGLE_CALENDAR_CREDENTIALS_PATH or "credentials.json")
+    oauth_env = bool(
+        (GOOGLE_OAUTH_REFRESH_TOKEN or "").strip()
+        and (GOOGLE_OAUTH_CLIENT_ID or "").strip()
+        and (GOOGLE_OAUTH_CLIENT_SECRET or "").strip()
+    )
+
+    if oauth_env or TOKEN_PATH.exists() or creds_path.exists():
+        try:
+            import json as _json
+
+            if creds_path.exists():
+                peek = _json.loads(creds_path.read_text(encoding="utf-8"))
+                if peek.get("type") == "service_account":
+                    raise ValueError("skip SA when OAuth expected")
+            creds = _get_oauth_credentials()
+            return build("calendar", "v3", credentials=creds)
+        except Exception as oauth_error:
+            if creds_path.exists():
+                peek = _json.loads(creds_path.read_text(encoding="utf-8"))
+                if peek.get("type") != "service_account":
+                    raise Exception(f"OAuth calendar auth failed: {oauth_error}") from oauth_error
+            print(f"OAuth flow failed, attempting service account: {oauth_error}")
+
+    if creds_path.exists():
+        import json as _json
+
+        peek = _json.loads(creds_path.read_text(encoding="utf-8"))
+        if peek.get("type") == "service_account":
+            credentials = service_account.Credentials.from_service_account_file(
+                str(creds_path),
+                scopes=[
+                    "https://www.googleapis.com/auth/calendar.readonly",
+                    "https://www.googleapis.com/auth/calendar.events",
+                ],
+            )
+            return build("calendar", "v3", credentials=credentials)
+
+    raise Exception(
+        "No calendar credentials. Use OAuth (org blocks service account keys) — see GOOGLE_CALENDAR_SETUP.md."
+    )
 
 
 def get_available_slots(date: datetime, num_slots: int = 3, calendar_email: str = None) -> List[Dict[str, Any]]:
@@ -90,7 +115,7 @@ def get_available_slots(date: datetime, num_slots: int = 3, calendar_email: str 
     Args:
         date: The date to check availability (datetime object)
         num_slots: Number of time slots to return (default: 3)
-        calendar_email: Email of the calendar to check (defaults to INTERVIEWER_EMAIL)
+        calendar_email: Email of the calendar to check (defaults to CALENDAR_EMAIL / recruit@tekleaders.io)
     
     Returns:
         List of dictionaries with 'start_time' and 'end_time' datetime objects
@@ -99,7 +124,7 @@ def get_available_slots(date: datetime, num_slots: int = 3, calendar_email: str 
         service = get_calendar_service()
         
         # Use provided calendar email or default to INTERVIEWER_EMAIL
-        target_calendar = calendar_email or INTERVIEWER_EMAIL
+        target_calendar = calendar_email or CALENDAR_EMAIL
         
         # Define working hours (9 AM to 5 PM)
         start_of_day = date.replace(hour=9, minute=0, second=0, microsecond=0)

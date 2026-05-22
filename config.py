@@ -81,10 +81,38 @@ FROM_EMAIL = get_env("FROM_EMAIL", "recruit@tekleaders.io")
 REPLY_TO_EMAIL = get_env("REPLY_TO_EMAIL", FROM_EMAIL)
 COMPANY_NAME = get_env("COMPANY_NAME", "Tek Leaders")
 
+# Recruiting mailbox + calendar (technical & HR rounds use the same account)
+RECRUIT_EMAIL = (get_env("RECRUIT_EMAIL", FROM_EMAIL) or FROM_EMAIL or "recruit@tekleaders.io").strip().lower()
+INTERVIEWER_EMAIL = (get_env("INTERVIEWER_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
+HR_INTERVIEWER_EMAIL = (get_env("HR_INTERVIEWER_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
+CALENDAR_EMAIL = (get_env("CALENDAR_EMAIL", RECRUIT_EMAIL) or RECRUIT_EMAIL).strip().lower()
+
+# CC on every outbound email (comma-separated override in EMAIL_CC_LIST)
+_EMAIL_CC_DEFAULT = (
+    "raghavendra.v@tekleaders.com,"
+    "sajida.baig@tekleaders.com,"
+    "janaki.vijinigiri@tekleaders.com"
+)
+EMAIL_CC_LIST = get_env("EMAIL_CC_LIST", _EMAIL_CC_DEFAULT) or _EMAIL_CC_DEFAULT
+
+
+def get_default_cc_emails() -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for part in EMAIL_CC_LIST.split(","):
+        addr = part.strip().lower()
+        if addr and addr not in seen:
+            seen.add(addr)
+            out.append(addr)
+    return out
+
+
 # Google Calendar Configuration
 GOOGLE_CALENDAR_CREDENTIALS_PATH = get_env("GOOGLE_CALENDAR_CREDENTIALS_PATH", "credentials.json")
-INTERVIEWER_EMAIL = get_env("INTERVIEWER_EMAIL", "akkireddy41473@gmail.com")
-HR_INTERVIEWER_EMAIL = get_env("HR_INTERVIEWER_EMAIL", "tekleaders.solutions@gmail.com")  # HR Round interviewer
+# OAuth fallback when org policy blocks service account keys (set on Render after one-time local login)
+GOOGLE_OAUTH_CLIENT_ID = get_env("GOOGLE_OAUTH_CLIENT_ID", "")
+GOOGLE_OAUTH_CLIENT_SECRET = get_env("GOOGLE_OAUTH_CLIENT_SECRET", "")
+GOOGLE_OAUTH_REFRESH_TOKEN = get_env("GOOGLE_OAUTH_REFRESH_TOKEN", "")
 INTERVIEW_DURATION_MINUTES = int(get_env("INTERVIEW_DURATION_MINUTES", "60"))
 
 # BASE_URL: Must be publicly accessible for email acknowledgement links to work

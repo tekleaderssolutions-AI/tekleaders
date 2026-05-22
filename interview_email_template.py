@@ -2,8 +2,10 @@
 """
 Email templates for interview scheduling.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
+
+from link_auth import with_candidate_token
 
 
 def generate_interview_slots_email(
@@ -35,6 +37,7 @@ def generate_interview_slots_email(
         Dictionary with 'subject' and 'body' keys
     """
     candidate_name = candidate_data.get('candidate_name', 'Candidate')
+    cand_email = (candidate_email or candidate_data.get("email") or "").strip()
     role = jd_data.get('role', 'Position')
     
     # Generate slot options HTML
@@ -45,9 +48,16 @@ def generate_interview_slots_email(
         end_time = slot['end_time'].strftime('%I:%M %p').lstrip('0')
         slot_id = f"slot{idx}"
         
-        # Include outreach_id token in the confirmation URL so only the intended
-        # candidate (recipient of the outreach email) can confirm the slot.
-        confirm_url = f"{base_url}/confirm-interview/{interview_id}?slot={slot_id}&outreach_id={outreach_id}"
+        # Signed link: only the candidate in To (outreach email) can select a slot.
+        confirm_base = (
+            f"{base_url}/confirm-interview/{interview_id}"
+            f"?slot={slot_id}&outreach_id={outreach_id}"
+        )
+        confirm_url = (
+            with_candidate_token(confirm_base, outreach_id, cand_email)
+            if cand_email
+            else confirm_base
+        )
         
         slots_html += f"""
             <div class="slot-option">

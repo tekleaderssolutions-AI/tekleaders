@@ -1,72 +1,105 @@
-# Google Calendar API Setup Guide
+# Google Calendar setup for recruit@tekleaders.io
 
-## Overview
-This guide explains how to set up Google Calendar API credentials for the interview scheduling feature.
+The app reads **`CALENDAR_EMAIL`** from `.env` (default: `recruit@tekleaders.io`) for free/busy checks and creating interview events.
 
-## Steps
+## Org policy blocks service account keys?
 
-### 1. Create a Google Cloud Project
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select an existing one
-3. Note your project ID
+If you see **“Service account key creation is disabled”** (`iam.disableServiceAccountKeyCreation`), you **cannot** download JSON keys. Use **Option B (OAuth)** below — the app supports refresh tokens on Render via environment variables.
 
-### 2. Enable Google Calendar API
-1. In the Google Cloud Console, go to "APIs & Services" > "Library"
-2. Search for "Google Calendar API"
-3. Click "Enable"
+---
 
-### 3. Create Service Account Credentials
-1. Go to "APIs & Services" > "Credentials"
-2. Click "Create Credentials" > "Service Account"
-3. Fill in the service account details:
-   - Name: `interview-scheduler`
-   - Description: `Service account for interview scheduling`
-4. Click "Create and Continue"
-5. Skip the optional steps and click "Done"
+## Choose one approach
 
-### 4. Generate JSON Key
-1. Click on the service account you just created
-2. Go to the "Keys" tab
-3. Click "Add Key" > "Create new key"
-4. Select "JSON" format
-5. Click "Create"
-6. The JSON file will download automatically
-7. **Rename this file to `credentials.json`** and place it in your project root directory
+### Option A — Service account (only if your org allows JSON keys)
 
-### 5. Share Calendar with Service Account
-1. Open Google Calendar
-2. Go to Settings > Settings for my calendars
-3. Select the calendar you want to use for interviews
-4. Scroll down to "Share with specific people"
-5. Click "Add people"
-6. Enter the service account email (found in the JSON file, looks like `interview-scheduler@project-id.iam.gserviceaccount.com`)
-7. Set permission to "Make changes to events"
-8. Click "Send"
+1. Open [Google Cloud Console](https://console.cloud.google.com/) → your project.
+2. **APIs & Services** → **Library** → enable **Google Calendar API**.
+3. **Credentials** → **Create credentials** → **Service account**.
+   - Name: e.g. `tekleaders-hiring-calendar`
+4. Open the service account → **Keys** → **Add key** → **JSON** → download.
+5. Save the downloaded file as **`credentials.json`** in the project root (`hiring/credentials.json`).
+   - The file must look like:
+     ```json
+     {
+       "type": "service_account",
+       "project_id": "...",
+       "private_key_id": "...",
+       "private_key": "-----BEGIN PRIVATE KEY-----\n...",
+       "client_email": "something@....iam.gserviceaccount.com",
+       ...
+     }
+     ```
+   - **Not** the old `"installed": { "client_id": ... }` OAuth desktop format.
+6. Copy the **`client_email`** from that JSON (ends with `.iam.gserviceaccount.com`).
+7. In Google Calendar **as recruit@tekleaders.io** (or Workspace admin):
+   - Open the **recruit** calendar → **Settings** → **Share with specific people**
+   - Add the service account email
+   - Permission: **Make changes to events**
+8. In `.env`:
+   ```
+   CALENDAR_EMAIL=recruit@tekleaders.io
+   GOOGLE_CALENDAR_CREDENTIALS_PATH=credentials.json
+   ```
 
-### 6. Update Environment Variables
-Make sure your `.env` file has:
+**On Render:** use **Environment → Secret Files** → filename `credentials.json`, paste the full service account JSON.
+
+---
+
+### Option B — OAuth as recruit@tekleaders.io (use when SA keys are blocked)
+
+1. **APIs & Services** → **OAuth consent screen** → configure (Internal for Workspace if available).
+2. **Credentials** → **+ Create credentials** → **OAuth client ID**.
+3. **User data** → Application type **Desktop app** → Create.
+4. Download JSON → save as `credentials.json` in project root (`"installed": { ... }`).
+5. On your PC, sign in as **recruit@tekleaders.io** when the browser opens:
+   ```bash
+   cd hiring
+   python check_calendar_setup.py check --days 1
+   ```
+   This creates **`token.json`** (gitignored).
+6. Copy refresh token to Render (one-time script):
+   ```bash
+   python -c "import json; t=json.load(open('token.json')); print('REFRESH=', t.get('refresh_token'))"
+   ```
+7. From `credentials.json`, copy `client_id` and `client_secret` (under `"installed"`).
+
+**Render environment variables:**
+
+```env
+CALENDAR_EMAIL=recruit@tekleaders.io
+GOOGLE_OAUTH_CLIENT_ID=<from credentials.json installed.client_id>
+GOOGLE_OAUTH_CLIENT_SECRET=<from credentials.json installed.client_secret>
+GOOGLE_OAUTH_REFRESH_TOKEN=<from token.json refresh_token>
 ```
-GOOGLE_CALENDAR_CREDENTIALS_PATH="credentials.json"
-INTERVIEWER_EMAIL="your-email@gmail.com"
-INTERVIEW_DURATION_MINUTES="60"
+
+No service account JSON needed on Render for this path.
+
+---
+
+## Remove old personal calendar (akkireddy41473@gmail.com)
+
+- Delete or replace any old `credentials.json` tied only to a personal Gmail.
+- Ensure `.env` does **not** set `INTERVIEWER_EMAIL` or `CALENDAR_EMAIL` to `akkireddy41473@gmail.com`.
+- In Google Calendar, remove the service account share from the old calendar if you no longer use it.
+
+---
+
+## Test
+
+```bash
+python check_calendar_setup.py
 ```
 
-## Testing
-1. Install dependencies: `pip install -r requirements.txt`
-2. Run database migrations: `python -c "from migrations import init_db; init_db()"`
-3. Start the server: `python -m uvicorn main:app --reload`
-4. Test the calendar integration by calling `/schedule-interviews` endpoint
+Expect free/busy for `recruit@tekleaders.io` (or a clear error if the calendar is not shared).
 
-## Troubleshooting
+---
 
-### "credentials.json not found"
-- Make sure the file is in the project root directory
-- Check the path in your `.env` file
+## `.env` checklist
 
-### "Permission denied" errors
-- Verify the service account email has been added to your calendar
-- Check that it has "Make changes to events" permission
-
-### "No available slots found"
-- Check that your calendar has free time on the specified date
-- Verify the working hours (9 AM - 5 PM) in `google_calendar.py`
+```env
+RECRUIT_EMAIL=recruit@tekleaders.io
+INTERVIEWER_EMAIL=recruit@tekleaders.io
+HR_INTERVIEWER_EMAIL=recruit@tekleaders.io
+CALENDAR_EMAIL=recruit@tekleaders.io
+GOOGLE_CALENDAR_CREDENTIALS_PATH=credentials.json
+```
