@@ -149,6 +149,7 @@ def generate_personalized_email(
     ats_score and rank are stored in DB only — never shown in the email.
     """
     candidate_name = candidate_data.get("candidate_name", "Candidate")
+    candidate_email = (candidate_data.get("email") or "").strip()
     role = jd_data.get("role") or jd_data.get("title") or "Position"
 
     canonical = candidate_data.get("canonical_json") or {}

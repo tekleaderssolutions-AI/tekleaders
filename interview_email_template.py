@@ -37,7 +37,7 @@ def generate_interview_slots_email(
         Dictionary with 'subject' and 'body' keys
     """
     candidate_name = candidate_data.get('candidate_name', 'Candidate')
-    cand_email = (candidate_email or candidate_data.get("email") or "").strip()
+    cand_email = (candidate_data.get("email") or "").strip()
     role = jd_data.get('role', 'Position')
     
     # Generate slot options HTML
