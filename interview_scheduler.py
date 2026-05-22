@@ -664,10 +664,12 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
         # Create Google Calendar event
         try:
             event_summary = f"Interview: {candidate_name} - {jd_title}"
-            event_description = f"Scheduled interview for {candidate_name} for the {jd_title} position."
-            
-            # Use HR interviewer email for Round 2, otherwise use regular interviewer
             organizer = CALENDAR_EMAIL
+            event_description = (
+                f"Scheduled interview for {candidate_name} for the {jd_title} position.\n"
+                f"Candidate: {candidate_email}\n"
+                f"Calendar: {organizer}"
+            )
 
             event = create_calendar_event(
                 summary=event_summary,
@@ -677,7 +679,7 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
                 organizer_email=organizer,
                 attendees_emails=[candidate_email, organizer],
                 timezone="Asia/Kolkata",
-                send_updates="all"
+                send_updates="all",  # ignored for service account; SMTP confirms candidate
             )
             
             event_link = event.get('htmlLink')

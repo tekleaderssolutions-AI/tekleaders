@@ -43,6 +43,10 @@ If you see **“Service account key creation is disabled”** (`iam.disableServi
 
 **On Render:** use **Environment → Secret Files** → filename `credentials.json`, paste the full service account JSON.
 
+**Service account + attendees:** Google returns `403 forbiddenForServiceAccounts` if the app tries to add guests on the event. The hiring app **does not** do that for service accounts — it creates the event on the shared **recruit@** calendar (with Meet) and sends the candidate a **confirmation email** with the Meet link. You do **not** need Domain-Wide Delegation for this flow.
+
+To get automatic Google Calendar invites to guests from the API, use **Option B (OAuth as recruit@)** or ask Workspace admin to enable [Domain-Wide Delegation](https://developers.google.com/identity/protocols/oauth2/service-account#delegatingauthority) for the service account.
+
 ---
 
 ### Option B — OAuth as recruit@tekleaders.io (use when SA keys are blocked)
