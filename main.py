@@ -2571,7 +2571,7 @@ async def handle_approvals(interview_id: str, action: str):
         <h1>🗓️ Request Reschedule</h1>
         <p class="subtitle">Suggest a new time for <strong>{candidate_name}</strong><br>Role: {jd_title}</p>
         
-        <form action="/interviews/reschedule/{interview_id}" method="post">
+        <form action="/interviewer/reschedule/{interview_id}" method="post">
             <label for="new_date">Proposed Date</label>
             <input type="date" id="new_date" name="new_date" required min="{datetime.now().strftime('%Y-%m-%d')}">
             
@@ -2593,6 +2593,15 @@ async def handle_approvals(interview_id: str, action: str):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing response: {str(e)}")
+
+
+@app.get("/interviewer/response/{interview_id}")
+async def interviewer_response_legacy(interview_id: str, action: str):
+    """
+    Legacy links from older approval emails (?action=approve|reject).
+    Forwards to /interviews/action/{interview_id}/{action}.
+    """
+    return await handle_approvals(interview_id, action)
 
 
 @app.post("/interviewer/reschedule/{interview_id}")

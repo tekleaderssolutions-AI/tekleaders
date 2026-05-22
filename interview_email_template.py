@@ -179,8 +179,8 @@ def generate_interviewer_approval_email(
     """
     Generate email to interviewer to approve or reject a proposed time slot.
     """
-    approve_url = f"{base_url}/interviewer/response/{interview_id}?action=approve"
-    reject_url = f"{base_url}/interviewer/response/{interview_id}?action=reject"
+    approve_url = f"{base_url}/interviews/action/{interview_id}/approve"
+    reject_url = f"{base_url}/interviews/action/{interview_id}/reject"
     
     subject = f"Action Required: {round_name} Request for {candidate_name}"
     
