@@ -26,6 +26,35 @@ SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
     "https://www.googleapis.com/auth/calendar.readonly",
 ]
+ENV_FILE = ROOT / ".env"
+
+
+def _update_env(client_id: str, client_secret: str, refresh: str) -> None:
+    """Write OAuth vars into .env (keeps other lines unchanged)."""
+    if not ENV_FILE.is_file():
+        return
+    lines = ENV_FILE.read_text(encoding="utf-8").splitlines()
+    updates = {
+        "CALENDAR_AUTH_MODE": "oauth",
+        "GOOGLE_OAUTH_CLIENT_ID": client_id,
+        "GOOGLE_OAUTH_CLIENT_SECRET": client_secret,
+        "GOOGLE_OAUTH_REFRESH_TOKEN": refresh,
+        "CALENDAR_EMAIL": "recruit@tekleaders.io",
+    }
+    seen: set[str] = set()
+    out: list[str] = []
+    for line in lines:
+        key = line.split("=", 1)[0].strip() if "=" in line and not line.strip().startswith("#") else ""
+        if key in updates:
+            out.append(f"{key}={updates[key]}")
+            seen.add(key)
+        else:
+            out.append(line)
+    for key, val in updates.items():
+        if key not in seen:
+            out.append(f"{key}={val}")
+    ENV_FILE.write_text("\n".join(out) + "\n", encoding="utf-8")
+    print(f"Updated {ENV_FILE}")
 
 
 def main() -> None:
@@ -70,6 +99,9 @@ def main() -> None:
         print("# No refresh_token — use token.json on this machine only")
     print("CALENDAR_EMAIL=recruit@tekleaders.io")
     print("=" * 60)
+
+    _update_env(client_id, client_secret, refresh)
+    load_dotenv(ENV_FILE, override=True)
 
     from google_calendar import create_calendar_event, extract_meet_link
     from datetime import datetime, timedelta, timezone

@@ -218,7 +218,14 @@ async def api_health():
 
     load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
     key = (os.environ.get("OPENAI_API_KEY") or "").strip()
-    from config import INTERVIEWER_EMAIL, HR_INTERVIEWER_EMAIL, CALENDAR_EMAIL, FROM_EMAIL
+    from config import (
+        INTERVIEWER_EMAIL,
+        HR_INTERVIEWER_EMAIL,
+        CALENDAR_EMAIL,
+        FROM_EMAIL,
+        CALENDAR_AUTH_MODE,
+    )
+    from google_calendar import calendar_auth_is_service_account
 
     return {
         "status": "ok",
