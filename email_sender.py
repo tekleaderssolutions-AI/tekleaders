@@ -99,6 +99,7 @@ def send_email(
             if cc not in envelope_recipients:
                 envelope_recipients.append(cc)
 
+        print(f"[EMAIL DEBUG] email_sender=v2-sendmail build=hiring-openai-v25")
         print(f"[EMAIL DEBUG] Attempting to send email to {to_addr}")
         print(f"[EMAIL DEBUG] SMTP: {cfg['host']}:{cfg['port']} user={cfg['user']}")
         print(f"[EMAIL DEBUG] Subject: {subject}")

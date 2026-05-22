@@ -107,6 +107,17 @@ INTERVIEWER_EMAIL = _recruit_mailbox("INTERVIEWER_EMAIL")
 HR_INTERVIEWER_EMAIL = _recruit_mailbox("HR_INTERVIEWER_EMAIL")
 CALENDAR_EMAIL = _recruit_mailbox("CALENDAR_EMAIL")
 
+
+def get_interviewer_email(*, hr_round: bool = False) -> str:
+    """
+    Interviewer mailbox at send time (reloads .env).
+    Technical & HR approval emails always use recruit@ unless you change RECRUIT_EMAIL.
+    """
+    load_dotenv(env_path, override=True)
+    if hr_round:
+        return _recruit_mailbox("HR_INTERVIEWER_EMAIL")
+    return _recruit_mailbox("INTERVIEWER_EMAIL")
+
 # CC on every outbound email (comma-separated override in EMAIL_CC_LIST)
 TEAM_CC_EMAILS: tuple[str, ...] = (
     "raghavendra.v@tekleaders.com",

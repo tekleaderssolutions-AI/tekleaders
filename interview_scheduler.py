@@ -18,10 +18,9 @@ from email_sender import send_email
 from config import (
     BASE_URL,
     COMPANY_NAME,
-    INTERVIEWER_EMAIL,
-    HR_INTERVIEWER_EMAIL,
     CALENDAR_EMAIL,
     INTERVIEW_DURATION_MINUTES,
+    get_interviewer_email,
 )
 from link_auth import verify_candidate_token
 def _generate_default_slots(interview_date: datetime, num_slots: int) -> List[Dict[str, datetime]]:
@@ -575,12 +574,13 @@ def confirm_interview_slot(
             round_name=round_name
         )
         
-        # Send email to appropriate interviewer based on round
-        interviewer_email = HR_INTERVIEWER_EMAIL if (interview_round and interview_round == 2) else INTERVIEWER_EMAIL
+        # Send approval email to recruit@ (reloads .env; blocks legacy Gmail)
+        interviewer_email = get_interviewer_email(hr_round=bool(interview_round and interview_round == 2))
+        print(f"[INTERVIEW] Approval email To={interviewer_email} (round={interview_round})")
         send_email(
             to_email=interviewer_email,
             subject=email_content["subject"],
-            html_body=email_content["body"]
+            html_body=email_content["body"],
         )
         
         cur.close()
@@ -1017,7 +1017,7 @@ def schedule_hr_round_interview(original_interview_id: str, num_slots: int = 3) 
             base_url=BASE_URL,
             company_name=COMPANY_NAME,
             round_name="HR Round",
-            interviewer_email=HR_INTERVIEWER_EMAIL
+            interviewer_email=get_interviewer_email(hr_round=True),
         )
         
         send_result = send_email(
