@@ -3,12 +3,14 @@
 Google Calendar integration for fetching interviewer availability.
 Supports both service account (server-to-server) and installed-app OAuth flows.
 """
-from datetime import datetime, timedelta
-from typing import List, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
 import os
+import time
 import uuid
+from urllib.parse import quote
 from google.oauth2.credentials import Credentials
 from google.oauth2 import service_account
 from google.auth.transport.requests import Request
@@ -218,6 +220,113 @@ def _http_error_reason(error: HttpError) -> str:
     return ""
 
 
+def extract_meet_link(event: Dict[str, Any]) -> Optional[str]:
+    """Pull Google Meet URL from an event resource."""
+    if not event:
+        return None
+    link = event.get("hangoutLink")
+    if link:
+        return link
+    conf = event.get("conferenceData") or {}
+    for ep in conf.get("entryPoints") or []:
+        uri = (ep.get("uri") or "").strip()
+        if uri and ep.get("entryPointType") in ("video", "more", None):
+            return uri
+    return None
+
+
+def _to_utc_gcal(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone(timedelta(hours=5, minutes=30)))
+    return dt.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def build_add_to_calendar_url(
+    *,
+    title: str,
+    start_dt: datetime,
+    end_dt: datetime,
+    details: str = "",
+    location: str = "",
+) -> str:
+    """Public Google Calendar 'Add event' link for candidates."""
+    dates = f"{_to_utc_gcal(start_dt)}/{_to_utc_gcal(end_dt)}"
+    params = (
+        f"action=TEMPLATE&text={quote(title)}&dates={dates}"
+        f"&details={quote(details)}&location={quote(location)}"
+    )
+    return f"https://calendar.google.com/calendar/render?{params}"
+
+
+def _meet_create_request() -> Dict[str, Any]:
+    return {
+        "createRequest": {
+            "requestId": f"meet-{uuid.uuid4().hex[:16]}",
+            "conferenceSolutionKey": {"type": "hangoutsMeet"},
+        }
+    }
+
+
+def _fetch_event(service, calendar_id: str, event_id: str) -> Dict[str, Any]:
+    return (
+        service.events()
+        .get(calendarId=calendar_id, eventId=event_id, conferenceDataVersion=1)
+        .execute()
+    )
+
+
+def ensure_event_has_meet(service, calendar_id: str, event: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Google Meet is provisioned asynchronously; re-fetch and patch if missing.
+    """
+    event_id = event.get("id")
+    if not event_id:
+        return event
+
+    meet = extract_meet_link(event)
+    if meet:
+        return event
+
+    # Try attaching Meet (service accounts on shared calendars often need a patch)
+    try:
+        event = (
+            service.events()
+            .patch(
+                calendarId=calendar_id,
+                eventId=event_id,
+                body={"conferenceData": _meet_create_request()},
+                conferenceDataVersion=1,
+            )
+            .execute()
+        )
+        meet = extract_meet_link(event)
+        if meet:
+            print(f"[CALENDAR] Meet link attached: {meet}")
+            return event
+    except HttpError as patch_err:
+        print(f"[CALENDAR] Patch Meet failed: {patch_err}")
+
+    for attempt in range(5):
+        time.sleep(1.5 if attempt else 0.5)
+        try:
+            event = _fetch_event(service, calendar_id, event_id)
+        except Exception as fetch_err:
+            print(f"[CALENDAR] Re-fetch event failed: {fetch_err}")
+            break
+        meet = extract_meet_link(event)
+        if meet:
+            print(f"[CALENDAR] Meet ready after poll ({attempt + 1}): {meet}")
+            return event
+        conf = event.get("conferenceData") or {}
+        status = (conf.get("createRequest") or {}).get("status", {}).get("statusCode")
+        if status == "failure":
+            print(f"[CALENDAR] Meet provisioning failed: {conf}")
+            break
+
+    print("[CALENDAR] No Meet link on event; calendar htmlLink will be used in email.")
+    return event
+
+
 def _insert_event(
     service,
     calendar_id: str,
@@ -277,12 +386,7 @@ def create_calendar_event(
                 "description": description,
                 "start": {"dateTime": start_dt.isoformat(), "timeZone": timezone},
                 "end": {"dateTime": end_dt.isoformat(), "timeZone": timezone},
-                "conferenceData": {
-                    "createRequest": {
-                        "requestId": f"meet-{uuid.uuid4().hex[:16]}",
-                        "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                    }
-                },
+                "conferenceData": _meet_create_request(),
             }
             if include_attendees and unique_attendees:
                 body["attendees"] = [
@@ -297,13 +401,14 @@ def create_calendar_event(
         event_body = build_body(include_attendees=include_attendees)
 
         try:
-            return _insert_event(
+            event = _insert_event(
                 service,
                 calendar_id,
                 event_body,
                 send_updates=effective_send,
                 with_conference=True,
             )
+            return ensure_event_has_meet(service, calendar_id, event)
         except HttpError as e:
             reason = _http_error_reason(e)
             if reason == "forbiddenForServiceAccounts" or "forbiddenForServiceAccounts" in str(e):
@@ -312,13 +417,14 @@ def create_calendar_event(
                     "creating event on shared calendar without API guests."
                 )
                 event_body = build_body(include_attendees=False)
-                return _insert_event(
+                event = _insert_event(
                     service,
                     calendar_id,
                     event_body,
                     send_updates="none",
                     with_conference=True,
                 )
+                return ensure_event_has_meet(service, calendar_id, event)
             if "conferenceData" in str(e):
                 print(f"[CALENDAR] Meet create failed, retrying without conference: {e}")
                 event_body = build_body(include_attendees=include_attendees)
@@ -330,23 +436,7 @@ def create_calendar_event(
                     send_updates=effective_send,
                     with_conference=False,
                 )
-                try:
-                    event = service.events().patch(
-                        calendarId=calendar_id,
-                        eventId=event["id"],
-                        body={
-                            "conferenceData": {
-                                "createRequest": {
-                                    "requestId": f"meet-{uuid.uuid4().hex[:16]}",
-                                    "conferenceSolutionKey": {"type": "hangoutsMeet"},
-                                }
-                            }
-                        },
-                        conferenceDataVersion=1,
-                    ).execute()
-                except Exception as patch_err:
-                    print(f"[CALENDAR] Could not add Meet after insert: {patch_err}")
-                return event
+                return ensure_event_has_meet(service, calendar_id, event)
             error_msg = (
                 f"Google Calendar API error: {e.resp.status} - "
                 f"{e.content.decode() if hasattr(e, 'content') else str(e)}"

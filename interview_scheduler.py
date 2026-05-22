@@ -603,7 +603,11 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
     Approve an interview slot (called by interviewer).
     Creates calendar event and sends confirmation to candidate.
     """
-    from google_calendar import create_calendar_event
+    from google_calendar import (
+        create_calendar_event,
+        extract_meet_link,
+        build_add_to_calendar_url,
+    )
     from email_sender import send_email
     from datetime import datetime, timezone
     
@@ -682,13 +686,10 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
                 send_updates="all",  # ignored for service account; SMTP confirms candidate
             )
             
-            event_link = event.get('htmlLink')
-            meet_link = event.get('hangoutLink')
-            if not meet_link:
-                conf = event.get('conferenceData', {})
-                entry_points = conf.get('entryPoints', []) if conf else []
-                if entry_points:
-                    meet_link = entry_points[0].get('uri')
+            event_link = (event.get("htmlLink") or "").strip()
+            meet_link = extract_meet_link(event)
+            if meet_link:
+                event_description = f"{event_description}\n\nGoogle Meet: {meet_link}"
                     
         except Exception as e:
             return {"error": f"Failed to create calendar event: {str(e)}"}
@@ -719,14 +720,45 @@ def approve_interview(interview_id: str) -> Dict[str, Any]:
         
         # Send confirmation email to candidate
         email_subject = f"Interview Confirmed - {jd_title}"
+        add_cal_url = build_add_to_calendar_url(
+            title=f"Interview: {jd_title}",
+            start_dt=start_dt,
+            end_dt=end_dt,
+            details=event_description,
+            location=meet_link or "",
+        )
+        if meet_link:
+            meeting_html = (
+                f'<p><strong>Google Meet:</strong> '
+                f'<a href="{meet_link}" style="color:#1a73e8;">Join meeting</a></p>'
+            )
+        else:
+            meeting_html = (
+                "<p><strong>Google Meet:</strong> Open the calendar event below — "
+                "the Meet link is on the recruit calendar invite.</p>"
+            )
+        calendar_html = ""
+        if event_link:
+            calendar_html = (
+                f'<p><strong>Calendar event:</strong> '
+                f'<a href="{event_link}" style="color:#1a73e8;">View on Google Calendar</a></p>'
+            )
+        add_cal_html = (
+            f'<p><a href="{add_cal_url}" style="display:inline-block;padding:10px 18px;'
+            f'background:#1a73e8;color:#fff;text-decoration:none;border-radius:6px;">'
+            f"Add to your calendar</a></p>"
+        )
         email_body = f"""
         <html>
-        <body>
+        <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
             <p>Hi {candidate_name},</p>
-            <p>Your interview for <strong>{jd_title}</strong> has been confirmed by the interviewer.</p>
-            <p><strong>Date:</strong> {start_dt.strftime('%A, %B %d, %Y at %I:%M %p')}</p>
-            <p><strong>Link:</strong> <a href="{meet_link}">{meet_link}</a></p>
+            <p>Your interview for <strong>{jd_title}</strong> has been confirmed.</p>
+            <p><strong>Date &amp; time:</strong> {start_dt.strftime('%A, %B %d, %Y at %I:%M %p')} (Asia/Kolkata)</p>
+            {meeting_html}
+            {calendar_html}
+            {add_cal_html}
             <p>Good luck!</p>
+            <p style="color:#666;font-size:13px;">{COMPANY_NAME} Recruitment</p>
         </body>
         </html>
         """
