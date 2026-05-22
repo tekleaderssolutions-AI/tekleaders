@@ -108,22 +108,35 @@ HR_INTERVIEWER_EMAIL = _recruit_mailbox("HR_INTERVIEWER_EMAIL")
 CALENDAR_EMAIL = _recruit_mailbox("CALENDAR_EMAIL")
 
 # CC on every outbound email (comma-separated override in EMAIL_CC_LIST)
-_EMAIL_CC_DEFAULT = (
-    "raghavendra.v@tekleaders.com,"
-    "sajida.baig@tekleaders.com,"
-    "janaki.vijinigiri@tekleaders.com"
+TEAM_CC_EMAILS: tuple[str, ...] = (
+    "raghavendra.v@tekleaders.com",
+    "sajida.baig@tekleaders.com",
+    "janaki.vijinigiri@tekleaders.com",
 )
-EMAIL_CC_LIST = get_env("EMAIL_CC_LIST", _EMAIL_CC_DEFAULT) or _EMAIL_CC_DEFAULT
+_EMAIL_CC_DEFAULT = ",".join(TEAM_CC_EMAILS)
+EMAIL_CC_LIST = (get_env("EMAIL_CC_LIST", _EMAIL_CC_DEFAULT) or _EMAIL_CC_DEFAULT).strip()
 
 
 def get_default_cc_emails() -> list[str]:
+    """
+    Team CC on every send. Reads EMAIL_CC_LIST from os.environ each call so
+    Render/local .env updates apply without stale imports.
+    Always includes TEAM_CC_EMAILS even if env is empty or partial.
+    """
+    raw = (os.environ.get("EMAIL_CC_LIST") or "").strip() or _EMAIL_CC_DEFAULT
     seen: set[str] = set()
     out: list[str] = []
-    for part in EMAIL_CC_LIST.split(","):
-        addr = part.strip().lower()
-        if addr and addr not in seen:
-            seen.add(addr)
-            out.append(addr)
+
+    def add(addr: str) -> None:
+        norm = addr.strip().lower()
+        if norm and norm not in seen:
+            seen.add(norm)
+            out.append(norm)
+
+    for addr in TEAM_CC_EMAILS:
+        add(addr)
+    for part in raw.replace(";", ",").split(","):
+        add(part)
     return out
 
 

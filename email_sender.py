@@ -4,9 +4,12 @@ SMTP email sending functionality using Gmail.
 """
 import smtplib
 import logging
+from pathlib import Path
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Dict, Any, Optional, List, Union
+
+from dotenv import load_dotenv
 
 from config import (
     SMTP_HOST,
@@ -19,6 +22,13 @@ from config import (
 )
 
 logger = logging.getLogger(__name__)
+
+_ENV_PATH = Path(__file__).resolve().parent / ".env"
+
+
+def _reload_env() -> None:
+    """Pick up EMAIL_CC_LIST from .env (local) or process env (Render)."""
+    load_dotenv(_ENV_PATH, override=True)
 
 
 def _merge_cc_recipients(
@@ -64,11 +74,14 @@ def send_email(
 ) -> Dict[str, Any]:
     """
     Send an email via Gmail SMTP.
-    Always CCs EMAIL_CC_LIST from config (Raghavendra, Sajida, Janaki by default).
+    Always CCs team list (Raghavendra, Sajida, Janaki) plus any extras.
     """
     try:
+        _reload_env()
         email_body = html_body or body
         cc_list = _merge_cc_recipients(to_email, cc_email=cc_email, cc_emails=cc_emails)
+        if not cc_list:
+            print("[EMAIL DEBUG] WARNING: no CC recipients resolved; check EMAIL_CC_LIST")
 
         print(f"[EMAIL DEBUG] Attempting to send email to {to_email}")
         print(f"[EMAIL DEBUG] SMTP config: host={SMTP_HOST}, port={SMTP_PORT}, user={SMTP_USER}")

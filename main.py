@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v23"
+SERVER_BUILD = "hiring-openai-v24"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
@@ -282,11 +282,18 @@ async def startup_event():
         print(f"[STARTUP] JD AI config check failed: {e}")
 
     try:
-        from config import INTERVIEWER_EMAIL, HR_INTERVIEWER_EMAIL, CALENDAR_EMAIL, FROM_EMAIL
+        from config import (
+            INTERVIEWER_EMAIL,
+            HR_INTERVIEWER_EMAIL,
+            CALENDAR_EMAIL,
+            FROM_EMAIL,
+            get_default_cc_emails,
+        )
 
         print(
             f"[STARTUP] Mail: from={FROM_EMAIL} interviewer={INTERVIEWER_EMAIL} "
-            f"hr_interviewer={HR_INTERVIEWER_EMAIL} calendar={CALENDAR_EMAIL}"
+            f"hr_interviewer={HR_INTERVIEWER_EMAIL} calendar={CALENDAR_EMAIL} "
+            f"cc={get_default_cc_emails()}"
         )
     except Exception as e:
         print(f"[STARTUP] Mail config check failed: {e}")
