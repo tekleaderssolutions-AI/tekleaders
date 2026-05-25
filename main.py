@@ -4344,6 +4344,9 @@ print("[HIRING] Fallback: http://127.0.0.1:8000/static/login.html")
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.environ.get("PORT", 8000))
-    print(f"[HIRING] Starting main.py from {_BASE_DIR} on port {port}")
-    uvicorn.run(app, host="127.0.0.1", port=port, reload=True)
+    port = int(os.environ.get("PORT", 8001))
+    # Render and other PaaS set PORT — must bind 0.0.0.0
+    host = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
+    reload = host == "127.0.0.1"
+    print(f"[HIRING] Starting main.py from {_BASE_DIR} on {host}:{port}")
+    uvicorn.run(app, host=host, port=port, reload=reload)

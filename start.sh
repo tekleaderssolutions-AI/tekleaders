@@ -1,11 +1,7 @@
-#!/bin/bash
-# Render startup script
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Install dependencies
-pip install -r requirements.txt
+# Migrations (non-fatal — startup hook also retries)
+python -c "import migrations; migrations.init_db()" || echo "[start] migration warning — continuing"
 
-# Run database migrations
-python -c "import migrations; migrations.init_db()"
-
-# Start the FastAPI server
-uvicorn main:app --host 0.0.0.0 --port $PORT
+exec uvicorn main:app --host 0.0.0.0 --port "${PORT:-8000}"
