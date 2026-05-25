@@ -173,6 +173,9 @@ def process_jd_upload(
         "short_id": short_id,
     }
 
+    client_id_str = str(client_id) if client_id else None
+    user_id_str = str(user_id) if user_id else None
+
     with db_cursor() as cur:
         cur.execute(
             """
@@ -181,7 +184,7 @@ def process_jd_upload(
             """,
             (
                 memory_uuid,
-                client_id,
+                client_id_str,
                 "job",
                 title,
                 embed_text,
@@ -189,7 +192,7 @@ def process_jd_upload(
                 Json(metadata),
                 Json(structured_jd),
                 short_id,
-                user_id,
+                user_id_str,
             ),
         )
 

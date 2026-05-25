@@ -357,7 +357,7 @@
       <div class="card-header">
         <div>
           <div class="card-title">Upload Job Description</div>
-          <div class="card-subtitle">Upload a PDF — AI will extract role, skills, experience, and location</div>
+          <div class="card-subtitle">Upload a PDF or Word (.docx) — AI will extract role, skills, experience, and location</div>
         </div>
       </div>
 
@@ -369,9 +369,9 @@
 
       <div id="uploadForm" style="display:none;">
         <div class="drop-zone" id="dropZone">
-          <input type="file" id="jdFile" accept=".pdf" onchange="onFileSelect()" />
-          <div class="drop-title">Drop your JD PDF here</div>
-          <div class="drop-sub">or click to browse · PDF only</div>
+          <input type="file" id="jdFile" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onchange="onFileSelect()" />
+          <div class="drop-title">Drop your JD here</div>
+          <div class="drop-sub">or click to browse · PDF or Word (.docx)</div>
           <div class="drop-file-name" id="dropFileName"></div>
         </div>
 
@@ -397,6 +397,12 @@
     const API = getApiBase();
     const JD_UPLOAD_URL = `${API}/api/v1/jd/analyze-pdf`;
     let selectedClientId = null;
+
+    function isJdFile(file) {
+      if (!file || !file.name) return false;
+      const n = file.name.toLowerCase();
+      return n.endsWith('.pdf') || n.endsWith('.docx');
+    }
 
     // ── Init ──────────────────────────────────────────────────
     document.addEventListener('DOMContentLoaded', () => {
@@ -509,9 +515,11 @@
       zone.addEventListener('drop', e => {
         e.preventDefault(); zone.classList.remove('dragging');
         const file = e.dataTransfer.files[0];
-        if (file && file.name.endsWith('.pdf')) {
+        if (file && isJdFile(file)) {
           document.getElementById('jdFile').files = e.dataTransfer.files;
           onFileSelect();
+        } else if (file) {
+          alert('Please drop a PDF or Word (.docx) file.');
         }
       });
     }
@@ -531,7 +539,8 @@
     // ── Upload JD ─────────────────────────────────────────────
     async function uploadJD() {
       const file = document.getElementById('jdFile').files[0];
-      if (!file) { alert('Please select a PDF file.'); return; }
+      if (!file) { alert('Please select a PDF or Word (.docx) file.'); return; }
+      if (!isJdFile(file)) { alert('Supported formats: PDF (.pdf) or Word (.docx).'); return; }
       if (!selectedClientId) { alert('Please select a client first.'); return; }
 
       setLoading('uploadBtn', 'uploadSpinner', 'uploadBtnText', true, 'Analyzing…');

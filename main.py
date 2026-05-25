@@ -99,7 +99,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
 
  
 app = FastAPI(title="JD Analyzer Agent")
-SERVER_BUILD = "hiring-openai-v25"
+SERVER_BUILD = "hiring-openai-v26"
 RESUME_UPLOAD_VERSION = "pdf-doc-docx-zip-v1"
  
 app.add_middleware(
@@ -1286,7 +1286,7 @@ async def list_clients(current_user: dict = Depends(get_current_user)):
             rows = cur.fetchall()
             return [
                 {
-                    "id": row[0],
+                    "id": str(row[0]),
                     "name": row[1],
                     "industry": row[2],
                     "created_at": row[3].isoformat() if row[3] else None
@@ -1343,7 +1343,7 @@ async def create_client(
             )
             row = cur.fetchone()
             return {
-                "id": row[0],
+                "id": str(row[0]),
                 "name": row[1],
                 "industry": row[2]
             }
@@ -1402,7 +1402,7 @@ def _extract_pdf_text(contents: bytes) -> str:
 
  
  
-async def _analyze_jd_pdf_openai_v5(
+async def _analyze_jd_upload_openai(
     *,
     file: UploadFile,
     job_id: Optional[str],
@@ -1410,9 +1410,14 @@ async def _analyze_jd_pdf_openai_v5(
     source_url: Optional[str],
     current_user: dict,
 ) -> JSONResponse:
-    """JD upload — OpenAI only (SERVER_BUILD v5)."""
-    if not file.filename.lower().endswith(".pdf"):
-        raise HTTPException(status_code=400, detail="Only PDF files are supported")
+    """JD upload — PDF or Word (.docx) — OpenAI extraction."""
+    from jd_text_extractor import extract_jd_text, is_supported_jd_filename
+
+    if not file.filename or not is_supported_jd_filename(file.filename):
+        raise HTTPException(
+            status_code=400,
+            detail="Supported formats: PDF (.pdf) or Word (.docx). Legacy .doc: save as .docx first.",
+        )
 
     load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
     if not (os.environ.get("OPENAI_API_KEY") or "").strip():
@@ -1423,15 +1428,21 @@ async def _analyze_jd_pdf_openai_v5(
 
     contents = await file.read()
     if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded PDF is empty")
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    raw_jd_text = _extract_pdf_text(contents)
+    try:
+        raw_jd_text = extract_jd_text(file.filename, contents)
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve)) from ve
+
     if not raw_jd_text.strip():
-        raise HTTPException(status_code=400, detail="JD text is empty after PDF extraction")
+        raise HTTPException(status_code=400, detail="JD text is empty after file extraction")
 
     user_id_val = current_user["id"] if current_user["id"] != "admin" else None
-    target_client_id = (
-        client_id if (client_id and client_id.strip()) else "60e80ea2-ae7f-46d6-b30d-f73293036729"
+    target_client_id = str(
+        client_id.strip()
+        if (client_id and str(client_id).strip())
+        else "60e80ea2-ae7f-46d6-b30d-f73293036729"
     )
 
     import importlib.util
@@ -1448,7 +1459,7 @@ async def _analyze_jd_pdf_openai_v5(
             raw_jd_text=raw_jd_text,
             job_id=job_id,
             source_url=source_url,
-            created_by="jd_analyzer_agent_pdf",
+            created_by="jd_analyzer_agent",
             user_id=user_id_val,
             client_id=target_client_id,
         )
@@ -1482,7 +1493,7 @@ async def analyze_jd_pdf(
     current_user: dict = Depends(get_current_user),
 ):
     try:
-        return await _analyze_jd_pdf_openai_v5(
+        return await _analyze_jd_upload_openai(
             file=file,
             job_id=job_id,
             client_id=client_id,

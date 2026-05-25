@@ -49,7 +49,7 @@ def log_pii_redaction(original: str, redacted: str, pii_types: List[str]):
             VALUES (%s, %s, %s, %s)
             """,
             [
-                uuid.uuid4(),
+                str(uuid.uuid4()),
                 original_snippet,
                 redacted_snippet,
                 pii_types,
